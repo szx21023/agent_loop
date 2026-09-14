@@ -57,7 +57,7 @@ app/
 
 data/index.json        # 預建知識索引（knowledge.repository 載入來源）
 scripts/ask.py         # CLI 入口
-tests/                 # 測試（conftest.py + modules/test_<feature>.py）
+tests/                 # 測試（待建：conftest.py + modules/test_<feature>.py）
 ```
 > 註：`memory` 目前為記憶體內實作，接 SQL/Redis 後在 `repository.py` 抽換；
 > Action Tools（Notion/Gmail/GitHub…）與 DB `models.py` 待導入資料層時再建。
@@ -78,7 +78,7 @@ tests/                 # 測試（conftest.py + modules/test_<feature>.py）
 ## 程式風格
 
 ### 語言與工具鏈
-- Python 3.11+；所有函式簽名必須有 type hints，不允許裸露的 `Any`
+- Python 3.11+；所有函式簽名必須有 type hints；避免裸露的 `Any`，但跨工具傳遞的異質 payload（如 `ToolResult.data`）可用 `Any`
 - 格式化與 lint 統一用 `ruff`（`ruff format` + `ruff check`），提交前必須零錯誤；ruff 規則設定見 `pyproject.toml` 的 `[tool.ruff]`
 - lint/格式在 `git commit` 時由 pre-commit 自動執行並擋關（設定見 `.pre-commit-config.yaml`）；首次需執行 `pre-commit install`
 - import 排序交給 ruff，不要手動調整；不使用相對 import，一律絕對 import（`from app...` / `from scripts...`）
@@ -86,7 +86,7 @@ tests/                 # 測試（conftest.py + modules/test_<feature>.py）
 
 ### 命名慣例
 - 變數/函式：snake_case；類別：PascalCase；常數：UPPER_SNAKE
-- 變數名稱用完整單字，不要用縮寫或單一字元（用 `ticket` 不要用 `t`、用 `index` 不要用 `i`）；例外：慣用的 loop 計數短名視情況可接受，但有語意時一律用完整單字
+- 變數名稱用完整單字，不要用縮寫或單一字元（用 `ticket` 不要用 `t`、用 `index` 不要用 `i`）；例外：慣用的 loop 計數短名視情況可接受，但有語意時一律用完整單字；數值／演算法密集的程式碼（如 BM25、檢索）沿用領域慣用短名（`bm`、`ci`、`n`）亦可
 - 布林值用 is_/has_/should_ 開頭（如 is_active）
 - Pydantic schema 命名：輸入用 `XxxCreate` / `XxxUpdate` / `XxxRequest`，輸出用 `XxxRead` / `XxxResponse`
 - 私有成員以單底線開頭 `_internal`
@@ -95,7 +95,7 @@ tests/                 # 測試（conftest.py + modules/test_<feature>.py）
 - 路由函式只做「參數驗證 → 呼叫 service → 回傳」，商業邏輯一律放 service 層，不寫在 router 裡
 - 依賴注入用 `Depends`，不要在函式內自行建立 client / session
 - I/O（外部 API、DB）優先用 async；不要在 async 路由裡呼叫同步阻塞函式
-- response_model 一定要明確指定，不要回傳未經 schema 過濾的物件
+- 回傳資料的端點一律明確指定 response_model；健康檢查／狀態探針類端點（如 `/`、`/api/health`）回固定結構的裸 dict 可接受
 - 路徑用複數名詞（`/sessions`、`/sessions/{id}`），不要動詞化路徑（既有的 `/ask` 為問答動作端點，屬例外）
 
 ### 錯誤處理

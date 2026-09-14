@@ -10,6 +10,7 @@ Both cap iterations with settings.max_loop_steps and return a ChatResponse.
 """
 from __future__ import annotations
 import json
+import logging
 from typing import Any
 
 from app.config import settings
@@ -19,8 +20,18 @@ from app.core.tools import REGISTRY, tool_definitions
 from app.modules.chat.schemas import ChatResponse
 from app.modules.memory import service as memory
 
+log = logging.getLogger(__name__)
+
 
 def run_agent(question: str, session_id: str = "default") -> ChatResponse:
+    """Agent Loop 進入點：依是否有可用的 LLM client 分派 online/offline 路徑。
+
+    Args:
+        question: 使用者問題。
+        session_id: 對話 session；用於讀寫對話歷史。
+    Returns:
+        ChatResponse（答案、去重後的來源、迴圈步數）。
+    """
     if llm.online:
         return _run_online(question, session_id)
     return _run_offline(question, session_id)
@@ -90,11 +101,17 @@ def _run_offline(question: str, session_id: str) -> ChatResponse:
     return ChatResponse(answer=answer, sources=_dedup(sources), steps=steps)
 
 
-def _run_tool(name: str, args: dict[str, Any]):
+def _run_tool(name: str, args: dict[str, Any]) -> ToolResult:
     tool = REGISTRY.get(name)
     if tool is None:
         return ToolResult(name=name, ok=False, error=f"unknown tool: {name}")
-    return tool.run(**args)
+    try:
+        return tool.run(**args)
+    except Exception as exc:
+        # 兌現「工具內部失敗不拋例外中斷 loop」的約定：記錄後轉成錯誤結果，
+        # 讓迴圈能把 is_error 回饋給模型（online）或跳過（offline），而非讓 request 500。
+        log.exception("tool %s failed with args %s", name, args)
+        return ToolResult(name=name, ok=False, error=f"{type(exc).__name__}: {exc}")
 
 
 def _history_blocks(session_id: str) -> list[dict[str, Any]]:

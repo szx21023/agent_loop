@@ -1,7 +1,5 @@
-"""共用依賴（FastAPI Depends 用）。"""
-from app.config import Settings, get_settings
+"""共用依賴（FastAPI Depends 用）。
 
-
-def settings_dependency() -> Settings:
-    """以依賴注入方式取得設定；路由需要讀設定時用 Depends(settings_dependency)。"""
-    return get_settings()
+目前設定以 config 的 `settings` / `get_settings()` 單例存取，尚無共用依賴；
+之後有分頁、目前使用者等跨路由依賴時放這裡。
+"""

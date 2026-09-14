@@ -19,11 +19,6 @@ class AppError(Exception):
         self.message = message or self.__class__.__name__
 
 
-class IndexNotLoadedError(AppError):
-    status_code = 503
-    code = "index_not_loaded"
-
-
 def register_exception_handlers(app: FastAPI) -> None:
     @app.exception_handler(AppError)
     async def _handle_app_error(_request: Request, exc: AppError) -> JSONResponse:

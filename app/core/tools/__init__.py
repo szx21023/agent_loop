@@ -1,19 +1,10 @@
-"""Tool framework (core) + registration bootstrap.
+"""Tool framework (core): the Tool abstraction and the REGISTRY.
 
-`base` provides the Tool abstraction and the REGISTRY. The concrete tools live
-in feature modules (e.g. app/modules/knowledge/service.py) and self-register on
-import; `register_tools()` triggers those imports so the REGISTRY is populated
-before the agent loop runs (called from main.py and scripts/ask.py).
+`base` provides the Tool abstraction and the registry. Concrete tools live in
+feature modules (e.g. app/modules/knowledge/service.py) and self-register on
+import; wiring those imports at startup is the composition root's job — see
+`app/bootstrap.py::register_tools()` (core stays feature-agnostic).
 """
 from app.core.tools.base import REGISTRY, Tool, register, tool_definitions
 
-__all__ = ["REGISTRY", "Tool", "register", "tool_definitions", "register_tools"]
-
-
-def register_tools() -> None:
-    """Import feature tool modules for their register() side effects.
-
-    Idempotent: Python caches modules, so repeated calls import once and the
-    register() calls run only on first import.
-    """
-    import app.modules.knowledge.service  # noqa: F401  (registers knowledge/action tools)
+__all__ = ["REGISTRY", "Tool", "register", "tool_definitions"]
