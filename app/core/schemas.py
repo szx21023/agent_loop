@@ -17,7 +17,7 @@ class ToolCall(BaseModel):
 
 class ToolResult(BaseModel):
     name: str
-    ok: bool
+    is_ok: bool
     data: Any = None
     sources: list[Source] = Field(default_factory=list)
     error: Optional[str] = None

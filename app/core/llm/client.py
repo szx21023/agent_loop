@@ -27,7 +27,7 @@ SYSTEM_PROMPT = (
 class LLM:
     def __init__(self) -> None:
         self._client = None
-        if not settings.offline:
+        if not settings.is_offline:
             try:
                 import anthropic
                 self._client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
@@ -38,7 +38,7 @@ class LLM:
                 self._client = None
 
     @property
-    def online(self) -> bool:
+    def is_online(self) -> bool:
         return self._client is not None
 
     def create(self, messages: list[dict[str, Any]], tools: list[dict[str, Any]]):

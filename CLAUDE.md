@@ -100,7 +100,7 @@ tests/                 # 測試（待建：conftest.py + modules/test_<feature>.
 
 ### 錯誤處理
 - 業務錯誤拋自訂 exception（見 `app/exceptions.py` 的 `AppError`），由統一的 exception handler 轉成 HTTP 回應
-- 工具內部的失敗回傳 `ToolResult(ok=False, error=...)`，不要拋例外中斷 agent loop
+- 工具內部的失敗回傳 `ToolResult(is_ok=False, error=...)`，不要拋例外中斷 agent loop
 - 不要在 router 直接 raise `HTTPException` 散落各處；不要吞例外（禁止空的 except）
 - 禁止 print（`scripts/` 下的 CLI 輸出除外）；一律用 logging 模組，並帶上相關 context
 

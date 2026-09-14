@@ -19,14 +19,14 @@ register_exception_handlers(app)
 app.include_router(chat_router, prefix="/api")
 
 
-# `/` 與 `/api/health` 都以 llm.online（實際是否成功建立 client）為準，
-# 而非 settings.offline（只看有沒有金鑰）——否則有金鑰但 client 建立失敗時，
+# `/` 與 `/api/health` 都以 llm.is_online（實際是否成功建立 client）為準，
+# 而非 settings.is_offline（只看有沒有金鑰）——否則有金鑰但 client 建立失敗時，
 # 兩個端點會對「online/offline」各說一套。
 @app.get("/")
 def root() -> dict:
-    return {"service": "agent-loop", "docs": "/docs", "mode": "online" if llm.online else "offline"}
+    return {"service": "agent-loop", "docs": "/docs", "mode": "online" if llm.is_online else "offline"}
 
 
 @app.get("/api/health")
 def health() -> dict:
-    return {"status": "ok", "mode": "online" if llm.online else "offline", "model": settings.model}
+    return {"status": "ok", "mode": "online" if llm.is_online else "offline", "model": settings.model}

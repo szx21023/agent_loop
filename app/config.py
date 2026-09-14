@@ -14,7 +14,7 @@ class Settings(BaseSettings):
     index_path: str = "data/index.json"
 
     @property
-    def offline(self) -> bool:
+    def is_offline(self) -> bool:
         """True when no API key is set — the agent runs in fallback mode."""
         return not self.anthropic_api_key.strip()
 

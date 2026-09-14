@@ -32,7 +32,7 @@ def run_agent(question: str, session_id: str = "default") -> ChatResponse:
     Returns:
         ChatResponse（答案、去重後的來源、迴圈步數）。
     """
-    if llm.online:
+    if llm.is_online:
         return _run_online(question, session_id)
     return _run_offline(question, session_id)
 
@@ -66,8 +66,8 @@ def _run_online(question: str, session_id: str) -> ChatResponse:
             tool_results.append({
                 "type": "tool_result",
                 "tool_use_id": block.id,
-                "content": _stringify(result.data if result.ok else f"error: {result.error}"),
-                "is_error": not result.ok,
+                "content": _stringify(result.data if result.is_ok else f"error: {result.error}"),
+                "is_error": not result.is_ok,
             })
         messages.append({"role": "user", "content": tool_results})
 
@@ -93,7 +93,7 @@ def _run_offline(question: str, session_id: str) -> ChatResponse:
         result = _run_tool(tool_call.name, tool_call.args)
         used.add(tool_call.name)
         sources.extend(result.sources)
-        if result.ok and result.data:
+        if result.is_ok and result.data:
             evidence.append(f"[{tool_call.name}] {_stringify(result.data)}")
 
     answer = llm.offline_answer(evidence)
@@ -104,14 +104,14 @@ def _run_offline(question: str, session_id: str) -> ChatResponse:
 def _run_tool(name: str, args: dict[str, Any]) -> ToolResult:
     tool = REGISTRY.get(name)
     if tool is None:
-        return ToolResult(name=name, ok=False, error=f"unknown tool: {name}")
+        return ToolResult(name=name, is_ok=False, error=f"unknown tool: {name}")
     try:
         return tool.run(**args)
     except Exception as exc:
         # 兌現「工具內部失敗不拋例外中斷 loop」的約定：記錄後轉成錯誤結果，
         # 讓迴圈能把 is_error 回饋給模型（online）或跳過（offline），而非讓 request 500。
         log.exception("tool %s failed with args %s", name, args)
-        return ToolResult(name=name, ok=False, error=f"{type(exc).__name__}: {exc}")
+        return ToolResult(name=name, is_ok=False, error=f"{type(exc).__name__}: {exc}")
 
 
 def _history_blocks(session_id: str) -> list[dict[str, Any]]:

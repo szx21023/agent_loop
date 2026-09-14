@@ -9,7 +9,7 @@ class BM25:
         self._docs: list[tuple[str, Counter, int]] = []
         self.idf: dict[str, float] = {}
         self.avgdl = 0.0
-        self._final = False
+        self._is_final = False
 
     def add(self, doc_id: str, tokens: list[str]) -> None:
         self._docs.append((doc_id, Counter(tokens), len(tokens)))
@@ -21,11 +21,11 @@ class BM25:
             df.update(c.keys())
         self.avgdl = (sum(l for _, _, l in self._docs) / n) if n else 0.0
         self.idf = {t: math.log(1 + (n - d + 0.5) / (d + 0.5)) for t, d in df.items()}
-        self._final = True
+        self._is_final = True
         return self
 
     def search(self, query_tokens: list[str], top_k: int = 5) -> list[tuple[str, float]]:
-        assert self._final, "call finalize() first"
+        assert self._is_final, "call finalize() first"
         q = Counter(query_tokens)
         out: list[tuple[str, float]] = []
         for doc_id, c, length in self._docs:
