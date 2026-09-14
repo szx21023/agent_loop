@@ -1,13 +1,24 @@
-"""檢索：父頁面路由（Top-k）→ 圖譜展開（Graph Traversal）→ 子樹 chunk 重排序。
+"""知識檢索資料層：Retriever + 索引載入。
 
-對齊 notion_graph.png 第 3 節（Agent 查詢與搜尋流程）：
-  Query → 比對父頁面摘要 Top-k → 展開查詢 → 內容評估與排序(Re-ranking)
+Retriever 對齊 notion_graph.png 第 3 節（Agent 查詢與搜尋流程）：
+  父頁面路由（Top-k）→ 圖譜展開（Graph Traversal）→ 子樹 chunk 重排序。
 
 父頁面（root，parent 為空）的路由文本 = 自身摘要 + 整個子樹（子頁/附檔）的標題與摘要彙整，
 讓 Top-k 能把「API timeout」這種問題路由到正確部門，再靠 traversal + rerank 命中精確段落。
+
+索引由 settings.index_path 載入（lru_cache 單例）；索引不存在時回 None，讓上層工具回傳
+錯誤結果而非讓整個 agent loop 崩潰。
 """
-from app.bm25 import BM25
-from app.tokenizer import tokenize
+import json
+import logging
+from functools import lru_cache
+from pathlib import Path
+
+from app.config import settings
+from app.core.retrieval.bm25 import BM25
+from app.core.retrieval.tokenizer import tokenize
+
+log = logging.getLogger(__name__)
 
 
 class Retriever:
@@ -80,3 +91,14 @@ class Retriever:
                 "score": round(score, 3),
             })
         return results
+
+
+@lru_cache(maxsize=1)
+def get_retriever() -> Retriever | None:
+    """載入預建索引並回傳 Retriever（單例）；索引不存在時回 None。"""
+    path = Path(settings.index_path)
+    if not path.exists():
+        log.warning("index not found at %s — knowledge tools will return empty", path)
+        return None
+    index = json.loads(path.read_text(encoding="utf-8"))
+    return Retriever(index)

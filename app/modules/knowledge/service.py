@@ -1,34 +1,17 @@
-"""Knowledge Tools: RAG (chunk re-ranking) + Graph (route + traversal).
+"""Knowledge 模組服務：對 LLM 曝露的知識工具，import 時自我註冊到 REGISTRY。
 
-Backed by the real BM25 + graph Retriever ported from notion-kb-agent, loaded
-from the prebuilt index at settings.index_path. If the index is missing, the
-tools return an error result instead of crashing the loop.
+- Knowledge Tools：search_rag（chunk 重排序）、search_graph（路由 + 圖譜展開）。
+- Action Tool：get_document（依 id 取全文）。其餘外部動作（Notion/Gmail/GitHub…）待接。
+
+工具內部失敗一律回 ToolResult(ok=False)，不拋例外，以免中斷 agent loop。
 """
-import json
-import logging
-from functools import lru_cache
-from pathlib import Path
-
-from app.config import settings
-from app.retrieval.retriever import Retriever
-from app.schemas import Source, ToolResult
-from app.tools.base import Tool, register
-
-log = logging.getLogger(__name__)
-
-
-@lru_cache(maxsize=1)
-def _retriever() -> Retriever | None:
-    path = Path(settings.index_path)
-    if not path.exists():
-        log.warning("index not found at %s — knowledge tools will return empty", path)
-        return None
-    index = json.loads(path.read_text(encoding="utf-8"))
-    return Retriever(index)
+from app.core.schemas import Source, ToolResult
+from app.core.tools.base import Tool, register
+from app.modules.knowledge.repository import get_retriever
 
 
 def _search_rag(query: str, top_k: int = 8) -> ToolResult:
-    r = _retriever()
+    r = get_retriever()
     if r is None:
         return ToolResult(name="search_rag", ok=False, error="index not loaded")
     routes = r.route(query, top_k=3)
@@ -44,7 +27,7 @@ def _search_rag(query: str, top_k: int = 8) -> ToolResult:
 
 
 def _search_graph(query: str) -> ToolResult:
-    r = _retriever()
+    r = get_retriever()
     if r is None:
         return ToolResult(name="search_graph", ok=False, error="index not loaded")
     routes = r.route(query, top_k=3)
@@ -56,6 +39,14 @@ def _search_graph(query: str) -> ToolResult:
         for nid in node_ids if nid in r.nodes
     ]
     return ToolResult(name="search_graph", ok=True, data=[s.ref for s in sources], sources=sources)
+
+
+def _get_document(doc_id: str) -> ToolResult:
+    r = get_retriever()
+    if r is not None and doc_id in r.nodes:
+        n = r.nodes[doc_id]
+        return ToolResult(name="get_document", ok=True, data=n.get("body") or n.get("summary", ""))
+    return ToolResult(name="get_document", ok=False, error=f"unknown doc: {doc_id}")
 
 
 register(Tool(
@@ -81,4 +72,15 @@ register(Tool(
         "required": ["query"],
     },
     run=lambda query: _search_graph(query),
+))
+
+register(Tool(
+    name="get_document",
+    description="Fetch the full text of a document by its id.",
+    parameters={
+        "type": "object",
+        "properties": {"doc_id": {"type": "string"}},
+        "required": ["doc_id"],
+    },
+    run=lambda doc_id: _get_document(doc_id),
 ))

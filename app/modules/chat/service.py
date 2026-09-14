@@ -13,10 +13,11 @@ import json
 from typing import Any
 
 from app.config import settings
-from app.llm import llm
-from app.memory import conversations
-from app.schemas import ChatResponse, Source
-from app.tools import REGISTRY, tool_definitions
+from app.core.llm import llm
+from app.core.schemas import Source, ToolResult
+from app.core.tools import REGISTRY, tool_definitions
+from app.modules.chat.schemas import ChatResponse
+from app.modules.memory import service as memory
 
 
 def run_agent(question: str, session_id: str = "default") -> ChatResponse:
@@ -40,8 +41,8 @@ def _run_online(question: str, session_id: str) -> ChatResponse:
         if resp.stop_reason != "tool_use":
             answer = "".join(b.text for b in resp.content if b.type == "text").strip()
             answer = answer or "查無相關資料。"
-            conversations.append(session_id, "user", question)
-            conversations.append(session_id, "assistant", answer)
+            memory.append_message(session_id, "user", question)
+            memory.append_message(session_id, "assistant", answer)
             return ChatResponse(answer=answer, sources=_dedup(sources), steps=steps)
 
         # execute every requested tool, return all results in one user turn
@@ -61,14 +62,14 @@ def _run_online(question: str, session_id: str) -> ChatResponse:
 
     # loop exhausted without a final answer
     fallback = "查無相關資料。" if not sources else "根據目前資料尚無法完整回答，請提供更多細節。"
-    conversations.append(session_id, "user", question)
-    conversations.append(session_id, "assistant", fallback)
+    memory.append_message(session_id, "user", question)
+    memory.append_message(session_id, "assistant", fallback)
     return ChatResponse(answer=fallback, sources=_dedup(sources), steps=steps)
 
 
 # ── offline: heuristic graph → rag → answer ──
 def _run_offline(question: str, session_id: str) -> ChatResponse:
-    conversations.append(session_id, "user", question)
+    memory.append_message(session_id, "user", question)
     used: set[str] = set()
     sources: list[Source] = []
     evidence: list[str] = []
@@ -85,14 +86,13 @@ def _run_offline(question: str, session_id: str) -> ChatResponse:
             evidence.append(f"[{tool_call.name}] {_stringify(result.data)}")
 
     answer = llm.offline_answer(evidence)
-    conversations.append(session_id, "assistant", answer)
+    memory.append_message(session_id, "assistant", answer)
     return ChatResponse(answer=answer, sources=_dedup(sources), steps=steps)
 
 
 def _run_tool(name: str, args: dict[str, Any]):
     tool = REGISTRY.get(name)
     if tool is None:
-        from app.schemas import ToolResult
         return ToolResult(name=name, ok=False, error=f"unknown tool: {name}")
     return tool.run(**args)
 
@@ -101,7 +101,7 @@ def _history_blocks(session_id: str) -> list[dict[str, Any]]:
     """Prior turns as plain user/assistant text (tool blocks are per-run only)."""
     return [
         {"role": m.role, "content": m.content}
-        for m in conversations.get(session_id)
+        for m in memory.get_history(session_id)
         if m.role in ("user", "assistant")
     ]
 

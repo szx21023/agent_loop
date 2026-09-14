@@ -1,7 +1,7 @@
 """Claude wrapper with an offline fallback.
 
 Online: exposes `create()`, a thin pass-through to the Anthropic Messages API
-used by the agent loop's native tool-use path (app/agent/loop.py).
+used by the agent loop's native tool-use path (app/modules/chat/service.py).
 Offline (no API key): `offline_decide()` / `offline_answer()` drive a
 deterministic heuristic loop so the whole app runs end-to-end without network.
 """
@@ -9,7 +9,7 @@ from __future__ import annotations
 from typing import Any, Optional
 
 from app.config import settings
-from app.schemas import Message, ToolCall
+from app.core.schemas import ToolCall
 
 SYSTEM_PROMPT = (
     "你是一個企業知識庫 Agent。任務：\n"

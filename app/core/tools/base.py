@@ -7,7 +7,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Callable
 
-from app.schemas import ToolResult
+from app.core.schemas import ToolResult
 
 RunFn = Callable[..., ToolResult]
 
