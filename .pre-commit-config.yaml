@@ -1,0 +1,19 @@
+# pre-commit 設定：git commit 時自動執行，未通過則中止 commit
+# 安裝一次：pip install pre-commit && pre-commit install
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.6.9
+    hooks:
+      - id: ruff          # lint（自動修正可修的問題）
+        args: [--fix]
+      - id: ruff-format   # 格式化
+
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.6.0
+    hooks:
+      - id: trailing-whitespace      # 移除行尾多餘空白
+      - id: end-of-file-fixer        # 檔案結尾補一個換行
+      - id: check-yaml               # 檢查 YAML 語法
+      - id: check-toml               # 檢查 TOML 語法（含 pyproject.toml）
+      - id: check-added-large-files  # 擋住不小心加入的大檔
+      - id: check-merge-conflict     # 擋住殘留的衝突標記

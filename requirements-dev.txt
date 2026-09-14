@@ -1,0 +1,8 @@
+# 開發相依。安裝：pip install -r requirements-dev.txt
+-r requirements.txt
+
+ruff==0.6.9          # 與 .pre-commit-config.yaml 的 rev 對齊，避免版本漂移
+pytest
+pytest-asyncio
+httpx
+pre-commit
