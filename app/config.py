@@ -1,4 +1,6 @@
 """Application settings, loaded from environment / .env."""
+from functools import lru_cache
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -17,4 +19,10 @@ class Settings(BaseSettings):
         return not self.anthropic_api_key.strip()
 
 
-settings = Settings()
+@lru_cache
+def get_settings() -> Settings:
+    """Settings 單例；透過快取避免重複讀取 .env。"""
+    return Settings()
+
+
+settings = get_settings()

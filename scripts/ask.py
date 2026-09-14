@@ -1,7 +1,10 @@
 """CLI: ask the agent a question. Usage: python -m scripts.ask "your question" """
 import sys
 
-from app.agent import run_agent
+from app.bootstrap import register_tools
+from app.modules.chat.service import run_agent
+
+register_tools()  # 確保工具已註冊到 REGISTRY
 
 
 def main() -> None:

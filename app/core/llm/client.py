@@ -1,15 +1,18 @@
 """Claude wrapper with an offline fallback.
 
 Online: exposes `create()`, a thin pass-through to the Anthropic Messages API
-used by the agent loop's native tool-use path (app/agent/loop.py).
+used by the agent loop's native tool-use path (app/modules/chat/service.py).
 Offline (no API key): `offline_decide()` / `offline_answer()` drive a
 deterministic heuristic loop so the whole app runs end-to-end without network.
 """
 from __future__ import annotations
+import logging
 from typing import Any, Optional
 
 from app.config import settings
-from app.schemas import Message, ToolCall
+from app.core.schemas import ToolCall
+
+log = logging.getLogger(__name__)
 
 SYSTEM_PROMPT = (
     "你是一個企業知識庫 Agent。任務：\n"
@@ -29,7 +32,10 @@ class LLM:
                 import anthropic
                 self._client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
             except Exception:
-                self._client = None  # fall back to offline mode
+                # 有金鑰卻建不出 client（套件缺失／版本不合…）是設定錯誤，不是正常
+                # offline；記下來，否則會安靜降級成 offline 沒人察覺。
+                log.exception("failed to init Anthropic client despite a key present; falling back to offline")
+                self._client = None
 
     @property
     def online(self) -> bool:

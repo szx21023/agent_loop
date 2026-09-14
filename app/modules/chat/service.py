@@ -10,16 +10,28 @@ Both cap iterations with settings.max_loop_steps and return a ChatResponse.
 """
 from __future__ import annotations
 import json
+import logging
 from typing import Any
 
 from app.config import settings
-from app.llm import llm
-from app.memory import conversations
-from app.schemas import ChatResponse, Source
-from app.tools import REGISTRY, tool_definitions
+from app.core.llm import llm
+from app.core.schemas import Source, ToolResult
+from app.core.tools import REGISTRY, tool_definitions
+from app.modules.chat.schemas import ChatResponse
+from app.modules.memory import service as memory
+
+log = logging.getLogger(__name__)
 
 
 def run_agent(question: str, session_id: str = "default") -> ChatResponse:
+    """Agent Loop 進入點：依是否有可用的 LLM client 分派 online/offline 路徑。
+
+    Args:
+        question: 使用者問題。
+        session_id: 對話 session；用於讀寫對話歷史。
+    Returns:
+        ChatResponse（答案、去重後的來源、迴圈步數）。
+    """
     if llm.online:
         return _run_online(question, session_id)
     return _run_offline(question, session_id)
@@ -40,8 +52,8 @@ def _run_online(question: str, session_id: str) -> ChatResponse:
         if resp.stop_reason != "tool_use":
             answer = "".join(b.text for b in resp.content if b.type == "text").strip()
             answer = answer or "查無相關資料。"
-            conversations.append(session_id, "user", question)
-            conversations.append(session_id, "assistant", answer)
+            memory.append_message(session_id, "user", question)
+            memory.append_message(session_id, "assistant", answer)
             return ChatResponse(answer=answer, sources=_dedup(sources), steps=steps)
 
         # execute every requested tool, return all results in one user turn
@@ -61,14 +73,14 @@ def _run_online(question: str, session_id: str) -> ChatResponse:
 
     # loop exhausted without a final answer
     fallback = "查無相關資料。" if not sources else "根據目前資料尚無法完整回答，請提供更多細節。"
-    conversations.append(session_id, "user", question)
-    conversations.append(session_id, "assistant", fallback)
+    memory.append_message(session_id, "user", question)
+    memory.append_message(session_id, "assistant", fallback)
     return ChatResponse(answer=fallback, sources=_dedup(sources), steps=steps)
 
 
 # ── offline: heuristic graph → rag → answer ──
 def _run_offline(question: str, session_id: str) -> ChatResponse:
-    conversations.append(session_id, "user", question)
+    memory.append_message(session_id, "user", question)
     used: set[str] = set()
     sources: list[Source] = []
     evidence: list[str] = []
@@ -85,23 +97,28 @@ def _run_offline(question: str, session_id: str) -> ChatResponse:
             evidence.append(f"[{tool_call.name}] {_stringify(result.data)}")
 
     answer = llm.offline_answer(evidence)
-    conversations.append(session_id, "assistant", answer)
+    memory.append_message(session_id, "assistant", answer)
     return ChatResponse(answer=answer, sources=_dedup(sources), steps=steps)
 
 
-def _run_tool(name: str, args: dict[str, Any]):
+def _run_tool(name: str, args: dict[str, Any]) -> ToolResult:
     tool = REGISTRY.get(name)
     if tool is None:
-        from app.schemas import ToolResult
         return ToolResult(name=name, ok=False, error=f"unknown tool: {name}")
-    return tool.run(**args)
+    try:
+        return tool.run(**args)
+    except Exception as exc:
+        # 兌現「工具內部失敗不拋例外中斷 loop」的約定：記錄後轉成錯誤結果，
+        # 讓迴圈能把 is_error 回饋給模型（online）或跳過（offline），而非讓 request 500。
+        log.exception("tool %s failed with args %s", name, args)
+        return ToolResult(name=name, ok=False, error=f"{type(exc).__name__}: {exc}")
 
 
 def _history_blocks(session_id: str) -> list[dict[str, Any]]:
     """Prior turns as plain user/assistant text (tool blocks are per-run only)."""
     return [
         {"role": m.role, "content": m.content}
-        for m in conversations.get(session_id)
+        for m in memory.get_history(session_id)
         if m.role in ("user", "assistant")
     ]
 
