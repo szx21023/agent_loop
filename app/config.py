@@ -9,6 +9,7 @@ class Settings(BaseSettings):
     model: str = "claude-opus-4-8"
     max_loop_steps: int = 6
     log_level: str = "INFO"
+    index_path: str = "data/index.json"
 
     @property
     def offline(self) -> bool:

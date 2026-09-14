@@ -8,9 +8,11 @@ from app.tools.base import Tool, register
 
 
 def _get_document(doc_id: str) -> ToolResult:
-    from app.tools.knowledge import _DOCS
-    if doc_id in _DOCS:
-        return ToolResult(name="get_document", ok=True, data=_DOCS[doc_id][0])
+    from app.tools.knowledge import _retriever
+    r = _retriever()
+    if r is not None and doc_id in r.nodes:
+        n = r.nodes[doc_id]
+        return ToolResult(name="get_document", ok=True, data=n.get("body") or n.get("summary", ""))
     return ToolResult(name="get_document", ok=False, error=f"unknown doc: {doc_id}")
 
 

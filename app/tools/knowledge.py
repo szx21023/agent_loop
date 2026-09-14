@@ -1,68 +1,80 @@
-"""Knowledge Tools: RAG (vector) + Graph (relations).
+"""Knowledge Tools: RAG (chunk re-ranking) + Graph (route + traversal).
 
-These are stubs backed by a tiny in-memory corpus so the loop runs end-to-end.
-Swap the internals for a real vector DB / graph DB later.
+Backed by the real BM25 + graph Retriever ported from notion-kb-agent, loaded
+from the prebuilt index at settings.index_path. If the index is missing, the
+tools return an error result instead of crashing the loop.
 """
+import json
+import logging
+from functools import lru_cache
+from pathlib import Path
+
+from app.config import settings
+from app.retrieval.retriever import Retriever
 from app.schemas import Source, ToolResult
-from app.tokenizer import tokenize
 from app.tools.base import Tool, register
 
-# Toy corpus: (id, text, related_ids)
-_DOCS = {
-    "eng-inc-014": ("A 專案在 2024 Q3 出現 API timeout，root cause 是連線池耗盡，"
-                    "已透過調大 pool size + retry 修復。", ["eng-doc-002"]),
-    "eng-doc-002": ("連線池設定與重試策略指南。", ["eng-inc-014"]),
-    "sec-pol-001": ("密碼政策：至少 12 碼，每 90 天更換，啟用 MFA。", []),
-}
+log = logging.getLogger(__name__)
 
 
-def _score(query: str, doc_id: str, text: str) -> int:
-    """Token-overlap score using the CJK-aware tokenizer."""
-    q_tokens = set(tokenize(query))
-    doc_tokens = set(tokenize(f"{doc_id} {text}"))
-    return len(q_tokens & doc_tokens)
+@lru_cache(maxsize=1)
+def _retriever() -> Retriever | None:
+    path = Path(settings.index_path)
+    if not path.exists():
+        log.warning("index not found at %s — knowledge tools will return empty", path)
+        return None
+    index = json.loads(path.read_text(encoding="utf-8"))
+    return Retriever(index)
 
 
-def _search_rag(query: str, top_k: int = 3) -> ToolResult:
-    ranked = sorted(
-        ((_score(query, doc_id, text), doc_id, text) for doc_id, (text, _rel) in _DOCS.items()),
-        key=lambda t: t[0],
-        reverse=True,
-    )
-    hits = [(doc_id, text) for score, doc_id, text in ranked if score > 0][:top_k]
-    sources = [Source(tool="search_rag", ref=doc_id, snippet=text) for doc_id, text in hits]
+def _search_rag(query: str, top_k: int = 8) -> ToolResult:
+    r = _retriever()
+    if r is None:
+        return ToolResult(name="search_rag", ok=False, error="index not loaded")
+    routes = r.route(query, top_k=3)
+    if not routes:
+        return ToolResult(name="search_rag", ok=True, data=[], sources=[])
+    node_ids = r.gather([nid for nid, _ in routes])
+    chunks = r.rerank(query, node_ids, top_k=top_k)
+    sources = [
+        Source(tool="search_rag", ref=c["node_id"], snippet=c["chunk"])
+        for c in chunks
+    ]
     return ToolResult(name="search_rag", ok=True, data=[s.snippet for s in sources], sources=sources)
 
 
 def _search_graph(query: str) -> ToolResult:
-    """Find a seed doc by keyword, then expand to related nodes."""
-    seeds = [d for d in _DOCS if _score(query, d, _DOCS[d][0]) > 0]
-    seen: dict[str, str] = {}
-    for seed in seeds:
-        seen[seed] = _DOCS[seed][0]
-        for rel in _DOCS[seed][1]:
-            seen[rel] = _DOCS[rel][0]
-    sources = [Source(tool="search_graph", ref=doc_id, snippet=text) for doc_id, text in seen.items()]
-    return ToolResult(name="search_graph", ok=True, data=list(seen), sources=sources)
+    r = _retriever()
+    if r is None:
+        return ToolResult(name="search_graph", ok=False, error="index not loaded")
+    routes = r.route(query, top_k=3)
+    if not routes:
+        return ToolResult(name="search_graph", ok=True, data=[], sources=[])
+    node_ids = r.gather([nid for nid, _ in routes])
+    sources = [
+        Source(tool="search_graph", ref=nid, snippet=r.nodes[nid].get("summary", ""))
+        for nid in node_ids if nid in r.nodes
+    ]
+    return ToolResult(name="search_graph", ok=True, data=[s.ref for s in sources], sources=sources)
 
 
 register(Tool(
     name="search_rag",
-    description="Vector/keyword search over documents. Returns relevant snippets.",
+    description="Vector/keyword search over documents (route -> traverse -> re-rank). Returns relevant chunks.",
     parameters={
         "type": "object",
         "properties": {
             "query": {"type": "string"},
-            "top_k": {"type": "integer", "default": 3},
+            "top_k": {"type": "integer", "default": 8},
         },
         "required": ["query"],
     },
-    run=lambda query, top_k=3: _search_rag(query, top_k),
+    run=lambda query, top_k=8: _search_rag(query, top_k),
 ))
 
 register(Tool(
     name="search_graph",
-    description="Graph search: find a node by keyword and expand related nodes/edges.",
+    description="Graph search: route to relevant parent pages, then expand the subtree and related nodes.",
     parameters={
         "type": "object",
         "properties": {"query": {"type": "string"}},
