@@ -1,14 +1,24 @@
-"""Thin Claude wrapper with an offline fallback.
+"""Claude wrapper with an offline fallback.
 
-`decide()` returns either a tool call or a final answer. When no API key is set
-(settings.offline), a deterministic heuristic drives the loop so the whole app
-runs end-to-end without network access.
+Online: exposes `create()`, a thin pass-through to the Anthropic Messages API
+used by the agent loop's native tool-use path (app/agent/loop.py).
+Offline (no API key): `offline_decide()` / `offline_answer()` drive a
+deterministic heuristic loop so the whole app runs end-to-end without network.
 """
 from __future__ import annotations
 from typing import Any, Optional
 
 from app.config import settings
 from app.schemas import Message, ToolCall
+
+SYSTEM_PROMPT = (
+    "你是一個企業知識庫 Agent。任務：\n"
+    "1. 幫使用者找到相關資訊\n"
+    "2. 可使用 search_graph / search_rag / get_document 等工具\n"
+    "3. 必須根據工具回傳的證據回答，並在答案中標註來源節點 id\n"
+    "4. 若證據不足以回答，直接回覆「查無相關資料」，絕對不要杜撰\n"
+    "以繁體中文作答。"
+)
 
 
 class LLM:
@@ -25,54 +35,31 @@ class LLM:
     def online(self) -> bool:
         return self._client is not None
 
-    def decide(
-        self,
-        messages: list[Message],
-        tools: list[dict[str, Any]],
-        used_tools: set[str],
-    ) -> tuple[Optional[ToolCall], Optional[str]]:
-        """Return (tool_call, None) to act, or (None, answer) to finish."""
-        if not self.online:
-            return self._offline_decide(messages, used_tools)
-
-        resp = self._client.messages.create(
+    def create(self, messages: list[dict[str, Any]], tools: list[dict[str, Any]]):
+        """One Anthropic Messages API turn. `messages` uses native content blocks."""
+        return self._client.messages.create(
             model=settings.model,
-            max_tokens=1024,
-            system=_SYSTEM_PROMPT,
+            max_tokens=4096,
+            system=SYSTEM_PROMPT,
             tools=tools,
-            messages=[{"role": m.role, "content": m.content}
-                      for m in messages if m.role in ("user", "assistant")],
+            messages=messages,
         )
-        for block in resp.content:
-            if getattr(block, "type", None) == "tool_use":
-                return ToolCall(name=block.name, args=dict(block.input)), None
-        text = "".join(getattr(b, "text", "") for b in resp.content)
-        return None, text.strip() or "查無相關資料。"
 
-    def _offline_decide(self, messages, used_tools):
-        """Heuristic loop: graph → rag → answer."""
-        question = next((m.content for m in reversed(messages) if m.role == "user"), "")
+    # ── offline heuristic (no API key): graph → rag → answer ──
+    def offline_decide(
+        self, question: str, used_tools: set[str]
+    ) -> tuple[Optional[ToolCall], Optional[str]]:
         if "search_graph" not in used_tools:
             return ToolCall(name="search_graph", args={"query": question}), None
         if "search_rag" not in used_tools:
             return ToolCall(name="search_rag", args={"query": question}), None
-        return None, self._offline_answer(messages)
+        return None, None  # signal: caller should synthesize an answer from evidence
 
     @staticmethod
-    def _offline_answer(messages) -> str:
-        evidence = [m.content for m in messages if m.role == "assistant"
-                    and m.content.startswith("[tool ")]
+    def offline_answer(evidence: list[str]) -> str:
         if not evidence:
             return "查無相關資料。"
         return "根據檢索到的資料：\n" + "\n".join(f"- {e}" for e in evidence)
 
-
-_SYSTEM_PROMPT = (
-    "你是一個企業知識庫 Agent。任務：\n"
-    "1. 幫使用者找到相關資訊\n"
-    "2. 可使用 Graph / RAG / Tools\n"
-    "3. 必須根據證據回答，資訊不足時不得杜撰\n"
-    "4. 資訊足夠時，產生附來源的最終答案\n"
-)
 
 llm = LLM()
