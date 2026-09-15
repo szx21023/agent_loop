@@ -15,12 +15,16 @@ from typing import Any
 
 from app.config import settings
 from app.core.llm import llm
+from app.core.llm.constants import NO_ANSWER
 from app.core.schemas import SourceSchema, ToolResultSchema
 from app.core.tools import REGISTRY, tool_definitions
 from app.modules.chat.schemas import ChatResponseSchema
 from app.modules.memory import service as memory
 
 log = logging.getLogger(__name__)
+
+# module-local：僅 chat 迴圈耗盡卻仍有部分證據時的回覆（跨 module 不需要）。
+PARTIAL_ANSWER = "根據目前資料尚無法完整回答，請提供更多細節。"
 
 
 def run_agent(question: str, session_id: str = "default") -> ChatResponseSchema:
@@ -51,7 +55,7 @@ def _run_online(question: str, session_id: str) -> ChatResponseSchema:
 
         if resp.stop_reason != "tool_use":
             answer = "".join(block.text for block in resp.content if block.type == "text").strip()
-            answer = answer or "查無相關資料。"
+            answer = answer or NO_ANSWER
             memory.append_message(session_id, "user", question)
             memory.append_message(session_id, "assistant", answer)
             return ChatResponseSchema(answer=answer, sources=_dedup(sources), steps=steps)
@@ -72,7 +76,7 @@ def _run_online(question: str, session_id: str) -> ChatResponseSchema:
         messages.append({"role": "user", "content": tool_results})
 
     # loop exhausted without a final answer
-    fallback = "查無相關資料。" if not sources else "根據目前資料尚無法完整回答，請提供更多細節。"
+    fallback = NO_ANSWER if not sources else PARTIAL_ANSWER
     memory.append_message(session_id, "user", question)
     memory.append_message(session_id, "assistant", fallback)
     return ChatResponseSchema(answer=fallback, sources=_dedup(sources), steps=steps)
