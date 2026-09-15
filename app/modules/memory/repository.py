@@ -6,18 +6,18 @@
 from collections import defaultdict
 from typing import Any
 
-from app.modules.memory.schemas import Message
+from app.modules.memory.schemas import MessageSchema
 
 
 class ConversationStore:
     def __init__(self) -> None:
-        self._history: dict[str, list[Message]] = defaultdict(list)
+        self._history: dict[str, list[MessageSchema]] = defaultdict(list)
 
-    def get(self, session_id: str) -> list[Message]:
+    def get(self, session_id: str) -> list[MessageSchema]:
         return self._history[session_id]
 
     def append(self, session_id: str, role: str, content: str) -> None:
-        self._history[session_id].append(Message(role=role, content=content))
+        self._history[session_id].append(MessageSchema(role=role, content=content))
 
     def clear(self, session_id: str) -> None:
         self._history.pop(session_id, None)

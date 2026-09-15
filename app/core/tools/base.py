@@ -1,15 +1,15 @@
 """Tool abstraction + a simple in-process registry.
 
 A Tool exposes a name, a JSON-schema description (fed to the LLM as a tool
-definition), and a `run(**args)` that returns a ToolResult.
+definition), and a `run(**args)` that returns a ToolResultSchema.
 """
 from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Callable
 
-from app.core.schemas import ToolResult
+from app.core.schemas import ToolResultSchema
 
-RunFn = Callable[..., ToolResult]
+RunFn = Callable[..., ToolResultSchema]
 
 
 @dataclass

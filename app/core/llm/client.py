@@ -10,7 +10,7 @@ import logging
 from typing import Any, Optional
 
 from app.config import settings
-from app.core.schemas import ToolCall
+from app.core.schemas import ToolCallSchema
 
 log = logging.getLogger(__name__)
 
@@ -54,11 +54,11 @@ class LLM:
     # ── offline heuristic (no API key): graph → rag → answer ──
     def offline_decide(
         self, question: str, used_tools: set[str]
-    ) -> tuple[Optional[ToolCall], Optional[str]]:
+    ) -> tuple[Optional[ToolCallSchema], Optional[str]]:
         if "search_graph" not in used_tools:
-            return ToolCall(name="search_graph", args={"query": question}), None
+            return ToolCallSchema(name="search_graph", args={"query": question}), None
         if "search_rag" not in used_tools:
-            return ToolCall(name="search_rag", args={"query": question}), None
+            return ToolCallSchema(name="search_rag", args={"query": question}), None
         return None, None  # signal: caller should synthesize an answer from evidence
 
     @staticmethod

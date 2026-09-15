@@ -3,50 +3,50 @@
 - Knowledge Tools：search_rag（chunk 重排序）、search_graph（路由 + 圖譜展開）。
 - Action Tool：get_document（依 id 取全文）。其餘外部動作（Notion/Gmail/GitHub…）待接。
 
-工具內部失敗一律回 ToolResult(is_ok=False)，不拋例外，以免中斷 agent loop。
+工具內部失敗一律回 ToolResultSchema(is_ok=False)，不拋例外，以免中斷 agent loop。
 """
-from app.core.schemas import Source, ToolResult
+from app.core.schemas import SourceSchema, ToolResultSchema
 from app.core.tools.base import Tool, register
 from app.modules.knowledge.repository import get_retriever
 
 
-def _search_rag(query: str, top_k: int = 8) -> ToolResult:
+def _search_rag(query: str, top_k: int = 8) -> ToolResultSchema:
     retriever = get_retriever()
     if retriever is None:
-        return ToolResult(name="search_rag", is_ok=False, error="index not loaded")
+        return ToolResultSchema(name="search_rag", is_ok=False, error="index not loaded")
     routes = retriever.route(query, top_k=3)
     if not routes:
-        return ToolResult(name="search_rag", is_ok=True, data=[], sources=[])
+        return ToolResultSchema(name="search_rag", is_ok=True, data=[], sources=[])
     node_ids = retriever.gather([nid for nid, _ in routes])
     chunks = retriever.rerank(query, node_ids, top_k=top_k)
     sources = [
-        Source(tool="search_rag", ref=chunk["node_id"], snippet=chunk["chunk"])
+        SourceSchema(tool="search_rag", ref=chunk["node_id"], snippet=chunk["chunk"])
         for chunk in chunks
     ]
-    return ToolResult(name="search_rag", is_ok=True, data=[source.snippet for source in sources], sources=sources)
+    return ToolResultSchema(name="search_rag", is_ok=True, data=[source.snippet for source in sources], sources=sources)
 
 
-def _search_graph(query: str) -> ToolResult:
+def _search_graph(query: str) -> ToolResultSchema:
     retriever = get_retriever()
     if retriever is None:
-        return ToolResult(name="search_graph", is_ok=False, error="index not loaded")
+        return ToolResultSchema(name="search_graph", is_ok=False, error="index not loaded")
     routes = retriever.route(query, top_k=3)
     if not routes:
-        return ToolResult(name="search_graph", is_ok=True, data=[], sources=[])
+        return ToolResultSchema(name="search_graph", is_ok=True, data=[], sources=[])
     node_ids = retriever.gather([nid for nid, _ in routes])
     sources = [
-        Source(tool="search_graph", ref=nid, snippet=retriever.nodes[nid].get("summary", ""))
+        SourceSchema(tool="search_graph", ref=nid, snippet=retriever.nodes[nid].get("summary", ""))
         for nid in node_ids if nid in retriever.nodes
     ]
-    return ToolResult(name="search_graph", is_ok=True, data=[source.ref for source in sources], sources=sources)
+    return ToolResultSchema(name="search_graph", is_ok=True, data=[source.ref for source in sources], sources=sources)
 
 
-def _get_document(doc_id: str) -> ToolResult:
+def _get_document(doc_id: str) -> ToolResultSchema:
     retriever = get_retriever()
     if retriever is not None and doc_id in retriever.nodes:
         node = retriever.nodes[doc_id]
-        return ToolResult(name="get_document", is_ok=True, data=node.get("body") or node.get("summary", ""))
-    return ToolResult(name="get_document", is_ok=False, error=f"unknown doc: {doc_id}")
+        return ToolResultSchema(name="get_document", is_ok=True, data=node.get("body") or node.get("summary", ""))
+    return ToolResultSchema(name="get_document", is_ok=False, error=f"unknown doc: {doc_id}")
 
 
 register(Tool(

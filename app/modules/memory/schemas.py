@@ -4,6 +4,6 @@ from typing import Literal
 from pydantic import BaseModel
 
 
-class Message(BaseModel):
+class MessageSchema(BaseModel):
     role: Literal["user", "assistant", "system"]
     content: str
