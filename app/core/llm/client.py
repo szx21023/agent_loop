@@ -65,7 +65,7 @@ class LLM:
     def offline_answer(evidence: list[str]) -> str:
         if not evidence:
             return "查無相關資料。"
-        return "根據檢索到的資料：\n" + "\n".join(f"- {e}" for e in evidence)
+        return "根據檢索到的資料：\n" + "\n".join(f"- {item}" for item in evidence)
 
 
 llm = LLM()

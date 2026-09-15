@@ -24,8 +24,8 @@ log = logging.getLogger(__name__)
 class Retriever:
     def __init__(self, index: dict):
         self.nodes: dict[str, dict] = index["nodes"]
-        self.roots = [nid for nid, n in self.nodes.items()
-                      if n["type"] == "page" and not n.get("parent")]
+        self.roots = [nid for nid, node in self.nodes.items()
+                      if node["type"] == "page" and not node.get("parent")]
 
         self._parent_bm25 = BM25()
         for rid in self.roots:
@@ -34,12 +34,12 @@ class Retriever:
 
     # ── 路由文本：root 摘要 + 子樹彙整 ──
     def _routing_text(self, root_id: str) -> str:
-        n = self.nodes[root_id]
-        parts = [n["title"], n["summary"]]
+        node = self.nodes[root_id]
+        parts = [node["title"], node["summary"]]
         for did in self._descendants(root_id):
-            d = self.nodes[did]
-            parts.append(d["title"])
-            parts.append(d["summary"])
+            descendant = self.nodes[did]
+            parts.append(descendant["title"])
+            parts.append(descendant["summary"])
         return " \n".join(parts)
 
     def _descendants(self, root_id: str) -> list[str]:
@@ -73,21 +73,21 @@ class Retriever:
         bm = BM25()
         cmap: dict[str, tuple[str, int]] = {}
         for nid in node_ids:
-            n = self.nodes[nid]
-            for ci, ch in enumerate(n["chunks"]):
+            node = self.nodes[nid]
+            for ci, ch in enumerate(node["chunks"]):
                 cid = f"{nid}#{ci}"
                 cmap[cid] = (nid, ci)
-                bm.add(cid, tokenize(f"{n['title']} {ch}"))
+                bm.add(cid, tokenize(f"{node['title']} {ch}"))
         if not cmap:
             return []
         bm.finalize()
         results = []
         for cid, score in bm.search(tokenize(question), top_k):
             nid, ci = cmap[cid]
-            n = self.nodes[nid]
+            node = self.nodes[nid]
             results.append({
-                "node_id": nid, "title": n["title"], "type": n["type"],
-                "department": n.get("department"), "chunk": n["chunks"][ci],
+                "node_id": nid, "title": node["title"], "type": node["type"],
+                "department": node.get("department"), "chunk": node["chunks"][ci],
                 "score": round(score, 3),
             })
         return results
