@@ -4,10 +4,10 @@
 from typing import Any
 
 from app.modules.memory.repository import conversations, profiles
-from app.modules.memory.schemas import Message
+from app.modules.memory.schemas import MessageSchema
 
 
-def get_history(session_id: str) -> list[Message]:
+def get_history(session_id: str) -> list[MessageSchema]:
     return conversations.get(session_id)
 
 

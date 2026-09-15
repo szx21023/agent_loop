@@ -4,20 +4,20 @@ from typing import Any, Optional
 from pydantic import BaseModel, Field
 
 
-class Source(BaseModel):
+class SourceSchema(BaseModel):
     tool: str
     ref: str
     snippet: str = ""
 
 
-class ToolCall(BaseModel):
+class ToolCallSchema(BaseModel):
     name: str
     args: dict[str, Any]
 
 
-class ToolResult(BaseModel):
+class ToolResultSchema(BaseModel):
     name: str
     is_ok: bool
     data: Any = None
-    sources: list[Source] = Field(default_factory=list)
+    sources: list[SourceSchema] = Field(default_factory=list)
     error: Optional[str] = None

@@ -6,7 +6,7 @@ Two implementations behind one entrypoint:
   - offline: deterministic heuristic (graph → rag → answer) so the app runs with
              no API key.
 
-Both cap iterations with settings.max_loop_steps and return a ChatResponse.
+Both cap iterations with settings.max_loop_steps and return a ChatResponseSchema.
 """
 from __future__ import annotations
 import json
@@ -15,22 +15,22 @@ from typing import Any
 
 from app.config import settings
 from app.core.llm import llm
-from app.core.schemas import Source, ToolResult
+from app.core.schemas import SourceSchema, ToolResultSchema
 from app.core.tools import REGISTRY, tool_definitions
-from app.modules.chat.schemas import ChatResponse
+from app.modules.chat.schemas import ChatResponseSchema
 from app.modules.memory import service as memory
 
 log = logging.getLogger(__name__)
 
 
-def run_agent(question: str, session_id: str = "default") -> ChatResponse:
+def run_agent(question: str, session_id: str = "default") -> ChatResponseSchema:
     """Agent Loop 進入點：依是否有可用的 LLM client 分派 online/offline 路徑。
 
     Args:
         question: 使用者問題。
         session_id: 對話 session；用於讀寫對話歷史。
     Returns:
-        ChatResponse（答案、去重後的來源、迴圈步數）。
+        ChatResponseSchema（答案、去重後的來源、迴圈步數）。
     """
     if llm.is_online:
         return _run_online(question, session_id)
@@ -38,11 +38,11 @@ def run_agent(question: str, session_id: str = "default") -> ChatResponse:
 
 
 # ── online: native Anthropic tool-use loop ──
-def _run_online(question: str, session_id: str) -> ChatResponse:
+def _run_online(question: str, session_id: str) -> ChatResponseSchema:
     tools = tool_definitions()
     messages: list[dict[str, Any]] = _history_blocks(session_id)
     messages.append({"role": "user", "content": question})
-    sources: list[Source] = []
+    sources: list[SourceSchema] = []
     steps = 0
 
     for steps in range(1, settings.max_loop_steps + 1):
@@ -54,7 +54,7 @@ def _run_online(question: str, session_id: str) -> ChatResponse:
             answer = answer or "查無相關資料。"
             memory.append_message(session_id, "user", question)
             memory.append_message(session_id, "assistant", answer)
-            return ChatResponse(answer=answer, sources=_dedup(sources), steps=steps)
+            return ChatResponseSchema(answer=answer, sources=_dedup(sources), steps=steps)
 
         # execute every requested tool, return all results in one user turn
         tool_results = []
@@ -75,14 +75,14 @@ def _run_online(question: str, session_id: str) -> ChatResponse:
     fallback = "查無相關資料。" if not sources else "根據目前資料尚無法完整回答，請提供更多細節。"
     memory.append_message(session_id, "user", question)
     memory.append_message(session_id, "assistant", fallback)
-    return ChatResponse(answer=fallback, sources=_dedup(sources), steps=steps)
+    return ChatResponseSchema(answer=fallback, sources=_dedup(sources), steps=steps)
 
 
 # ── offline: heuristic graph → rag → answer ──
-def _run_offline(question: str, session_id: str) -> ChatResponse:
+def _run_offline(question: str, session_id: str) -> ChatResponseSchema:
     memory.append_message(session_id, "user", question)
     used: set[str] = set()
-    sources: list[Source] = []
+    sources: list[SourceSchema] = []
     evidence: list[str] = []
     steps = 0
 
@@ -98,20 +98,20 @@ def _run_offline(question: str, session_id: str) -> ChatResponse:
 
     answer = llm.offline_answer(evidence)
     memory.append_message(session_id, "assistant", answer)
-    return ChatResponse(answer=answer, sources=_dedup(sources), steps=steps)
+    return ChatResponseSchema(answer=answer, sources=_dedup(sources), steps=steps)
 
 
-def _run_tool(name: str, args: dict[str, Any]) -> ToolResult:
+def _run_tool(name: str, args: dict[str, Any]) -> ToolResultSchema:
     tool = REGISTRY.get(name)
     if tool is None:
-        return ToolResult(name=name, is_ok=False, error=f"unknown tool: {name}")
+        return ToolResultSchema(name=name, is_ok=False, error=f"unknown tool: {name}")
     try:
         return tool.run(**args)
     except Exception as exc:
         # 兌現「工具內部失敗不拋例外中斷 loop」的約定：記錄後轉成錯誤結果，
         # 讓迴圈能把 is_error 回饋給模型（online）或跳過（offline），而非讓 request 500。
         log.exception("tool %s failed with args %s", name, args)
-        return ToolResult(name=name, is_ok=False, error=f"{type(exc).__name__}: {exc}")
+        return ToolResultSchema(name=name, is_ok=False, error=f"{type(exc).__name__}: {exc}")
 
 
 def _history_blocks(session_id: str) -> list[dict[str, Any]]:
@@ -129,7 +129,7 @@ def _stringify(data: Any) -> str:
     return json.dumps(data, ensure_ascii=False)
 
 
-def _dedup(sources: list[Source]) -> list[Source]:
+def _dedup(sources: list[SourceSchema]) -> list[SourceSchema]:
     seen, out = set(), []
     for source in sources:
         key = (source.tool, source.ref)
