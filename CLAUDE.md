@@ -90,6 +90,7 @@ tests/                 # 測試（待建：conftest.py + modules/test_<feature>.
 - 布林值用 is_/has_/should_ 開頭（如 is_active）
 - Pydantic schema 命名：類別名稱一律以 `Schema` 結尾（如 `ChatRequestSchema` / `ChatResponseSchema` / `SourceSchema`）；語意仍用 `Xxx(Create|Update|Request)` 表輸入、`Xxx(Read|Response)` 表輸出，後接 `Schema`
 - 私有成員以單底線開頭 `_internal`
+- 常數依使用 scope 放置：只在單一 module 用就放該 module（module 內的 `constants.py` 或檔案頂部），跨 module 才上提到 `app/core/` 對應層；環境可調的值進 `config.py`（Settings），不算常數。常數集中檔一律命名 `constants.py`（不要用 `const.py` / `names.py` 等別名）；一組相關的字串常數優先用 `StrEnum`
 
 ### FastAPI 慣例
 - 路由函式只做「參數驗證 → 呼叫 service → 回傳」，商業邏輯一律放 service 層，不寫在 router 裡
