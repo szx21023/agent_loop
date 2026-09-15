@@ -12,7 +12,7 @@ from typing import Any, Optional
 from app.config import settings
 from app.core.llm.constants import EVIDENCE_PREFIX, MAX_TOKENS, NO_ANSWER, SYSTEM_PROMPT
 from app.core.schemas import ToolCallSchema
-from app.core.tools.names import ToolName
+from app.core.tools.constants import ToolName
 
 log = logging.getLogger(__name__)
 

@@ -7,7 +7,7 @@
 """
 from app.core.schemas import SourceSchema, ToolResultSchema
 from app.core.tools.base import Tool, register
-from app.core.tools.names import ToolName
+from app.core.tools.constants import ToolName
 from app.modules.knowledge.repository import get_retriever
 
 # module-local：僅 knowledge 檢索用到的預設值，跨 module 不需要，故不上提 core/config。
