@@ -3,6 +3,7 @@
 """
 from typing import Any
 
+from app.core.constants import Role
 from app.modules.memory.repository import conversations, profiles
 from app.modules.memory.schemas import MessageSchema
 
@@ -11,7 +12,7 @@ def get_history(session_id: str) -> list[MessageSchema]:
     return conversations.get(session_id)
 
 
-def append_message(session_id: str, role: str, content: str) -> None:
+def append_message(session_id: str, role: Role, content: str) -> None:
     conversations.append(session_id, role, content)
 
 

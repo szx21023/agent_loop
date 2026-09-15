@@ -6,6 +6,7 @@
 from collections import defaultdict
 from typing import Any
 
+from app.core.constants import Role
 from app.modules.memory.schemas import MessageSchema
 
 
@@ -16,7 +17,7 @@ class ConversationStore:
     def get(self, session_id: str) -> list[MessageSchema]:
         return self._history[session_id]
 
-    def append(self, session_id: str, role: str, content: str) -> None:
+    def append(self, session_id: str, role: Role, content: str) -> None:
         self._history[session_id].append(MessageSchema(role=role, content=content))
 
     def clear(self, session_id: str) -> None:

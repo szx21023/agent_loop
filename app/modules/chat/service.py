@@ -14,20 +14,25 @@ import logging
 from typing import Any
 
 from app.config import settings
+from app.core.constants import Role
 from app.core.llm import llm
 from app.core.llm.constants import NO_ANSWER
 from app.core.schemas import SourceSchema, ToolResultSchema
 from app.core.tools import REGISTRY, tool_definitions
+from app.modules.chat.constants import (
+    DEFAULT_SESSION_ID,
+    PARTIAL_ANSWER,
+    TEXT,
+    TOOL_RESULT,
+    TOOL_USE,
+)
 from app.modules.chat.schemas import ChatResponseSchema
 from app.modules.memory import service as memory
 
 log = logging.getLogger(__name__)
 
-# module-local：僅 chat 迴圈耗盡卻仍有部分證據時的回覆（跨 module 不需要）。
-PARTIAL_ANSWER = "根據目前資料尚無法完整回答，請提供更多細節。"
 
-
-def run_agent(question: str, session_id: str = "default") -> ChatResponseSchema:
+def run_agent(question: str, session_id: str = DEFAULT_SESSION_ID) -> ChatResponseSchema:
     """Agent Loop 進入點：依是否有可用的 LLM client 分派 online/offline 路徑。
 
     Args:
@@ -45,46 +50,46 @@ def run_agent(question: str, session_id: str = "default") -> ChatResponseSchema:
 def _run_online(question: str, session_id: str) -> ChatResponseSchema:
     tools = tool_definitions()
     messages: list[dict[str, Any]] = _history_blocks(session_id)
-    messages.append({"role": "user", "content": question})
+    messages.append({"role": Role.USER, "content": question})
     sources: list[SourceSchema] = []
     steps = 0
 
     for steps in range(1, settings.max_loop_steps + 1):
         resp = llm.create(messages, tools)
-        messages.append({"role": "assistant", "content": resp.content})
+        messages.append({"role": Role.ASSISTANT, "content": resp.content})
 
-        if resp.stop_reason != "tool_use":
-            answer = "".join(block.text for block in resp.content if block.type == "text").strip()
+        if resp.stop_reason != TOOL_USE:
+            answer = "".join(block.text for block in resp.content if block.type == TEXT).strip()
             answer = answer or NO_ANSWER
-            memory.append_message(session_id, "user", question)
-            memory.append_message(session_id, "assistant", answer)
+            memory.append_message(session_id, Role.USER, question)
+            memory.append_message(session_id, Role.ASSISTANT, answer)
             return ChatResponseSchema(answer=answer, sources=_dedup(sources), steps=steps)
 
         # execute every requested tool, return all results in one user turn
         tool_results = []
         for block in resp.content:
-            if block.type != "tool_use":
+            if block.type != TOOL_USE:
                 continue
             result = _run_tool(block.name, dict(block.input))
             sources.extend(result.sources)
             tool_results.append({
-                "type": "tool_result",
+                "type": TOOL_RESULT,
                 "tool_use_id": block.id,
                 "content": _stringify(result.data if result.is_ok else f"error: {result.error}"),
                 "is_error": not result.is_ok,
             })
-        messages.append({"role": "user", "content": tool_results})
+        messages.append({"role": Role.USER, "content": tool_results})
 
     # loop exhausted without a final answer
     fallback = NO_ANSWER if not sources else PARTIAL_ANSWER
-    memory.append_message(session_id, "user", question)
-    memory.append_message(session_id, "assistant", fallback)
+    memory.append_message(session_id, Role.USER, question)
+    memory.append_message(session_id, Role.ASSISTANT, fallback)
     return ChatResponseSchema(answer=fallback, sources=_dedup(sources), steps=steps)
 
 
 # ── offline: heuristic graph → rag → answer ──
 def _run_offline(question: str, session_id: str) -> ChatResponseSchema:
-    memory.append_message(session_id, "user", question)
+    memory.append_message(session_id, Role.USER, question)
     used: set[str] = set()
     sources: list[SourceSchema] = []
     evidence: list[str] = []
@@ -101,7 +106,7 @@ def _run_offline(question: str, session_id: str) -> ChatResponseSchema:
             evidence.append(f"[{tool_call.name}] {_stringify(result.data)}")
 
     answer = llm.offline_answer(evidence)
-    memory.append_message(session_id, "assistant", answer)
+    memory.append_message(session_id, Role.ASSISTANT, answer)
     return ChatResponseSchema(answer=answer, sources=_dedup(sources), steps=steps)
 
 
@@ -123,7 +128,7 @@ def _history_blocks(session_id: str) -> list[dict[str, Any]]:
     return [
         {"role": message.role, "content": message.content}
         for message in memory.get_history(session_id)
-        if message.role in ("user", "assistant")
+        if message.role in (Role.USER, Role.ASSISTANT)
     ]
 
 
