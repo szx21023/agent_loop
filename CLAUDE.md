@@ -37,15 +37,15 @@ app/
 ├── exceptions.py      # 自訂例外基底（AppError）+ 統一 exception handler
 ├── dependencies.py    # 共用依賴（settings…）
 ├── core/              # 跨功能基礎設施
-│   ├── schemas.py     #   跨模組共用型別：Source / ToolResult / ToolCall
-│   ├── llm/           #   Claude 封裝 + offline fallback + SYSTEM_PROMPT
-│   ├── tools/         #   Tool 抽象 + REGISTRY + tool_definitions() + register_tools()
+│   ├── schemas.py     #   跨模組共用型別：SourceSchema / ToolResultSchema / ToolCallSchema
+│   ├── llm/           #   Claude 封裝 + offline fallback（SYSTEM_PROMPT / NO_ANSWER 等常數見 constants.py）
+│   ├── tools/         #   Tool 抽象 + REGISTRY + tool_definitions() + register_tools()（工具名稱常數 ToolName 見 constants.py）
 │   └── retrieval/     #   檢索基礎元件：bm25 / tokenizer
 └── modules/           # 每個功能一個資料夾，內部自成分層
     ├── chat/          #   對話：Agent Loop 本體
     │   ├── router.py      # POST /ask、DELETE /sessions/{id}
     │   ├── service.py     # run_agent：online（原生 tool-use）/ offline（啟發式）
-    │   └── schemas.py     # ChatRequest / ChatResponse
+    │   └── schemas.py     # ChatRequestSchema / ChatResponseSchema
     ├── knowledge/     #   知識檢索與工具
     │   ├── service.py     # search_rag / search_graph / get_document（import 時註冊工具）
     │   ├── repository.py  # Retriever：route（父頁面路由）→ gather（圖譜展開）→ rerank；索引載入
@@ -53,7 +53,7 @@ app/
     └── memory/        #   記憶
         ├── service.py     # 對外服務（其他模組經此存取記憶）
         ├── repository.py  # ConversationStore / ProfileStore（目前 in-memory）
-        └── schemas.py     # Message
+        └── schemas.py     # MessageSchema
 
 data/index.json        # 預建知識索引（knowledge.repository 載入來源）
 scripts/ask.py         # CLI 入口
@@ -90,6 +90,7 @@ tests/                 # 測試（待建：conftest.py + modules/test_<feature>.
 - 布林值用 is_/has_/should_ 開頭（如 is_active）
 - Pydantic schema 命名：類別名稱一律以 `Schema` 結尾（如 `ChatRequestSchema` / `ChatResponseSchema` / `SourceSchema`）；語意仍用 `Xxx(Create|Update|Request)` 表輸入、`Xxx(Read|Response)` 表輸出，後接 `Schema`
 - 私有成員以單底線開頭 `_internal`
+- 常數依使用 scope 放置：只在單一 module 用就放該 module（module 內的 `constants.py` 或檔案頂部），跨 module 才上提到 `app/core/` 對應層；環境可調的值進 `config.py`（Settings），不算常數。常數集中檔一律命名 `constants.py`（不要用 `const.py` / `names.py` 等別名）；一組相關的字串常數優先用 `StrEnum`
 
 ### FastAPI 慣例
 - 路由函式只做「參數驗證 → 呼叫 service → 回傳」，商業邏輯一律放 service 層，不寫在 router 裡
