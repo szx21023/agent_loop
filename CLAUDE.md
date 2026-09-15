@@ -37,15 +37,15 @@ app/
 ├── exceptions.py      # 自訂例外基底（AppError）+ 統一 exception handler
 ├── dependencies.py    # 共用依賴（settings…）
 ├── core/              # 跨功能基礎設施
-│   ├── schemas.py     #   跨模組共用型別：Source / ToolResult / ToolCall
-│   ├── llm/           #   Claude 封裝 + offline fallback + SYSTEM_PROMPT
-│   ├── tools/         #   Tool 抽象 + REGISTRY + tool_definitions() + register_tools()
+│   ├── schemas.py     #   跨模組共用型別：SourceSchema / ToolResultSchema / ToolCallSchema
+│   ├── llm/           #   Claude 封裝 + offline fallback（SYSTEM_PROMPT / NO_ANSWER 等常數見 constants.py）
+│   ├── tools/         #   Tool 抽象 + REGISTRY + tool_definitions() + register_tools()（工具名稱常數 ToolName 見 constants.py）
 │   └── retrieval/     #   檢索基礎元件：bm25 / tokenizer
 └── modules/           # 每個功能一個資料夾，內部自成分層
     ├── chat/          #   對話：Agent Loop 本體
     │   ├── router.py      # POST /ask、DELETE /sessions/{id}
     │   ├── service.py     # run_agent：online（原生 tool-use）/ offline（啟發式）
-    │   └── schemas.py     # ChatRequest / ChatResponse
+    │   └── schemas.py     # ChatRequestSchema / ChatResponseSchema
     ├── knowledge/     #   知識檢索與工具
     │   ├── service.py     # search_rag / search_graph / get_document（import 時註冊工具）
     │   ├── repository.py  # Retriever：route（父頁面路由）→ gather（圖譜展開）→ rerank；索引載入
@@ -53,7 +53,7 @@ app/
     └── memory/        #   記憶
         ├── service.py     # 對外服務（其他模組經此存取記憶）
         ├── repository.py  # ConversationStore / ProfileStore（目前 in-memory）
-        └── schemas.py     # Message
+        └── schemas.py     # MessageSchema
 
 data/index.json        # 預建知識索引（knowledge.repository 載入來源）
 scripts/ask.py         # CLI 入口
