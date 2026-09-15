@@ -10,18 +10,11 @@ import logging
 from typing import Any, Optional
 
 from app.config import settings
+from app.core.llm.constants import EVIDENCE_PREFIX, MAX_TOKENS, NO_ANSWER, SYSTEM_PROMPT
 from app.core.schemas import ToolCallSchema
+from app.core.tools.constants import ToolName
 
 log = logging.getLogger(__name__)
-
-SYSTEM_PROMPT = (
-    "你是一個企業知識庫 Agent。任務：\n"
-    "1. 幫使用者找到相關資訊\n"
-    "2. 可使用 search_graph / search_rag / get_document 等工具\n"
-    "3. 必須根據工具回傳的證據回答，並在答案中標註來源節點 id\n"
-    "4. 若證據不足以回答，直接回覆「查無相關資料」，絕對不要杜撰\n"
-    "以繁體中文作答。"
-)
 
 
 class LLM:
@@ -45,7 +38,7 @@ class LLM:
         """One Anthropic Messages API turn. `messages` uses native content blocks."""
         return self._client.messages.create(
             model=settings.model,
-            max_tokens=4096,
+            max_tokens=MAX_TOKENS,
             system=SYSTEM_PROMPT,
             tools=tools,
             messages=messages,
@@ -55,17 +48,17 @@ class LLM:
     def offline_decide(
         self, question: str, used_tools: set[str]
     ) -> tuple[Optional[ToolCallSchema], Optional[str]]:
-        if "search_graph" not in used_tools:
-            return ToolCallSchema(name="search_graph", args={"query": question}), None
-        if "search_rag" not in used_tools:
-            return ToolCallSchema(name="search_rag", args={"query": question}), None
+        if ToolName.SEARCH_GRAPH not in used_tools:
+            return ToolCallSchema(name=ToolName.SEARCH_GRAPH, args={"query": question}), None
+        if ToolName.SEARCH_RAG not in used_tools:
+            return ToolCallSchema(name=ToolName.SEARCH_RAG, args={"query": question}), None
         return None, None  # signal: caller should synthesize an answer from evidence
 
     @staticmethod
     def offline_answer(evidence: list[str]) -> str:
         if not evidence:
-            return "查無相關資料。"
-        return "根據檢索到的資料：\n" + "\n".join(f"- {item}" for item in evidence)
+            return NO_ANSWER
+        return EVIDENCE_PREFIX + "\n".join(f"- {item}" for item in evidence)
 
 
 llm = LLM()

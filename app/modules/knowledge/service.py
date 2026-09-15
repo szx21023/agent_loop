@@ -7,64 +7,69 @@
 """
 from app.core.schemas import SourceSchema, ToolResultSchema
 from app.core.tools.base import Tool, register
+from app.core.tools.constants import ToolName
 from app.modules.knowledge.repository import get_retriever
 
+# module-local：僅 knowledge 檢索用到的預設值，跨 module 不需要，故不上提 core/config。
+DEFAULT_RAG_TOP_K = 8
+ROUTE_TOP_K = 3
 
-def _search_rag(query: str, top_k: int = 8) -> ToolResultSchema:
+
+def _search_rag(query: str, top_k: int = DEFAULT_RAG_TOP_K) -> ToolResultSchema:
     retriever = get_retriever()
     if retriever is None:
-        return ToolResultSchema(name="search_rag", is_ok=False, error="index not loaded")
-    routes = retriever.route(query, top_k=3)
+        return ToolResultSchema(name=ToolName.SEARCH_RAG, is_ok=False, error="index not loaded")
+    routes = retriever.route(query, top_k=ROUTE_TOP_K)
     if not routes:
-        return ToolResultSchema(name="search_rag", is_ok=True, data=[], sources=[])
+        return ToolResultSchema(name=ToolName.SEARCH_RAG, is_ok=True, data=[], sources=[])
     node_ids = retriever.gather([nid for nid, _ in routes])
     chunks = retriever.rerank(query, node_ids, top_k=top_k)
     sources = [
-        SourceSchema(tool="search_rag", ref=chunk["node_id"], snippet=chunk["chunk"])
+        SourceSchema(tool=ToolName.SEARCH_RAG, ref=chunk["node_id"], snippet=chunk["chunk"])
         for chunk in chunks
     ]
-    return ToolResultSchema(name="search_rag", is_ok=True, data=[source.snippet for source in sources], sources=sources)
+    return ToolResultSchema(name=ToolName.SEARCH_RAG, is_ok=True, data=[source.snippet for source in sources], sources=sources)
 
 
 def _search_graph(query: str) -> ToolResultSchema:
     retriever = get_retriever()
     if retriever is None:
-        return ToolResultSchema(name="search_graph", is_ok=False, error="index not loaded")
-    routes = retriever.route(query, top_k=3)
+        return ToolResultSchema(name=ToolName.SEARCH_GRAPH, is_ok=False, error="index not loaded")
+    routes = retriever.route(query, top_k=ROUTE_TOP_K)
     if not routes:
-        return ToolResultSchema(name="search_graph", is_ok=True, data=[], sources=[])
+        return ToolResultSchema(name=ToolName.SEARCH_GRAPH, is_ok=True, data=[], sources=[])
     node_ids = retriever.gather([nid for nid, _ in routes])
     sources = [
-        SourceSchema(tool="search_graph", ref=nid, snippet=retriever.nodes[nid].get("summary", ""))
+        SourceSchema(tool=ToolName.SEARCH_GRAPH, ref=nid, snippet=retriever.nodes[nid].get("summary", ""))
         for nid in node_ids if nid in retriever.nodes
     ]
-    return ToolResultSchema(name="search_graph", is_ok=True, data=[source.ref for source in sources], sources=sources)
+    return ToolResultSchema(name=ToolName.SEARCH_GRAPH, is_ok=True, data=[source.ref for source in sources], sources=sources)
 
 
 def _get_document(doc_id: str) -> ToolResultSchema:
     retriever = get_retriever()
     if retriever is not None and doc_id in retriever.nodes:
         node = retriever.nodes[doc_id]
-        return ToolResultSchema(name="get_document", is_ok=True, data=node.get("body") or node.get("summary", ""))
-    return ToolResultSchema(name="get_document", is_ok=False, error=f"unknown doc: {doc_id}")
+        return ToolResultSchema(name=ToolName.GET_DOCUMENT, is_ok=True, data=node.get("body") or node.get("summary", ""))
+    return ToolResultSchema(name=ToolName.GET_DOCUMENT, is_ok=False, error=f"unknown doc: {doc_id}")
 
 
 register(Tool(
-    name="search_rag",
+    name=ToolName.SEARCH_RAG,
     description="Vector/keyword search over documents (route -> traverse -> re-rank). Returns relevant chunks.",
     parameters={
         "type": "object",
         "properties": {
             "query": {"type": "string"},
-            "top_k": {"type": "integer", "default": 8},
+            "top_k": {"type": "integer", "default": DEFAULT_RAG_TOP_K},
         },
         "required": ["query"],
     },
-    run=lambda query, top_k=8: _search_rag(query, top_k),
+    run=lambda query, top_k=DEFAULT_RAG_TOP_K: _search_rag(query, top_k),
 ))
 
 register(Tool(
-    name="search_graph",
+    name=ToolName.SEARCH_GRAPH,
     description="Graph search: route to relevant parent pages, then expand the subtree and related nodes.",
     parameters={
         "type": "object",
@@ -75,7 +80,7 @@ register(Tool(
 ))
 
 register(Tool(
-    name="get_document",
+    name=ToolName.GET_DOCUMENT,
     description="Fetch the full text of a document by its id.",
     parameters={
         "type": "object",
