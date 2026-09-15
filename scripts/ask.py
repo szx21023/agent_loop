@@ -15,8 +15,8 @@ def main() -> None:
     print(f"(steps: {resp.steps})")
     if resp.sources:
         print("sources:")
-        for s in resp.sources:
-            print(f"  - [{s.tool}] {s.ref}: {s.snippet[:60]}")
+        for source in resp.sources:
+            print(f"  - [{source.tool}] {source.ref}: {source.snippet[:60]}")
 
 
 if __name__ == "__main__":

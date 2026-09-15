@@ -50,7 +50,7 @@ def _run_online(question: str, session_id: str) -> ChatResponse:
         messages.append({"role": "assistant", "content": resp.content})
 
         if resp.stop_reason != "tool_use":
-            answer = "".join(b.text for b in resp.content if b.type == "text").strip()
+            answer = "".join(block.text for block in resp.content if block.type == "text").strip()
             answer = answer or "查無相關資料。"
             memory.append_message(session_id, "user", question)
             memory.append_message(session_id, "assistant", answer)
@@ -117,9 +117,9 @@ def _run_tool(name: str, args: dict[str, Any]) -> ToolResult:
 def _history_blocks(session_id: str) -> list[dict[str, Any]]:
     """Prior turns as plain user/assistant text (tool blocks are per-run only)."""
     return [
-        {"role": m.role, "content": m.content}
-        for m in memory.get_history(session_id)
-        if m.role in ("user", "assistant")
+        {"role": message.role, "content": message.content}
+        for message in memory.get_history(session_id)
+        if message.role in ("user", "assistant")
     ]
 
 
@@ -131,9 +131,9 @@ def _stringify(data: Any) -> str:
 
 def _dedup(sources: list[Source]) -> list[Source]:
     seen, out = set(), []
-    for s in sources:
-        key = (s.tool, s.ref)
+    for source in sources:
+        key = (source.tool, source.ref)
         if key not in seen:
             seen.add(key)
-            out.append(s)
+            out.append(source)
     return out

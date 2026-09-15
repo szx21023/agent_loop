@@ -20,10 +20,10 @@ def _search_rag(query: str, top_k: int = 8) -> ToolResult:
     node_ids = retriever.gather([nid for nid, _ in routes])
     chunks = retriever.rerank(query, node_ids, top_k=top_k)
     sources = [
-        Source(tool="search_rag", ref=c["node_id"], snippet=c["chunk"])
-        for c in chunks
+        Source(tool="search_rag", ref=chunk["node_id"], snippet=chunk["chunk"])
+        for chunk in chunks
     ]
-    return ToolResult(name="search_rag", is_ok=True, data=[s.snippet for s in sources], sources=sources)
+    return ToolResult(name="search_rag", is_ok=True, data=[source.snippet for source in sources], sources=sources)
 
 
 def _search_graph(query: str) -> ToolResult:
@@ -38,14 +38,14 @@ def _search_graph(query: str) -> ToolResult:
         Source(tool="search_graph", ref=nid, snippet=retriever.nodes[nid].get("summary", ""))
         for nid in node_ids if nid in retriever.nodes
     ]
-    return ToolResult(name="search_graph", is_ok=True, data=[s.ref for s in sources], sources=sources)
+    return ToolResult(name="search_graph", is_ok=True, data=[source.ref for source in sources], sources=sources)
 
 
 def _get_document(doc_id: str) -> ToolResult:
     retriever = get_retriever()
     if retriever is not None and doc_id in retriever.nodes:
-        n = retriever.nodes[doc_id]
-        return ToolResult(name="get_document", is_ok=True, data=n.get("body") or n.get("summary", ""))
+        node = retriever.nodes[doc_id]
+        return ToolResult(name="get_document", is_ok=True, data=node.get("body") or node.get("summary", ""))
     return ToolResult(name="get_document", is_ok=False, error=f"unknown doc: {doc_id}")
 
 

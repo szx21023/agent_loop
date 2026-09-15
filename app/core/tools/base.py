@@ -34,9 +34,9 @@ def tool_definitions() -> list[dict[str, Any]]:
     """Anthropic-style tool definitions for every registered tool."""
     return [
         {
-            "name": t.name,
-            "description": t.description,
-            "input_schema": t.parameters,
+            "name": tool.name,
+            "description": tool.description,
+            "input_schema": tool.parameters,
         }
-        for t in REGISTRY.values()
+        for tool in REGISTRY.values()
     ]
