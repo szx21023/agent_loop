@@ -1,9 +1,9 @@
 """memory 模組的資料型別。"""
-from typing import Literal
-
 from pydantic import BaseModel
+
+from app.core.constants import Role
 
 
 class MessageSchema(BaseModel):
-    role: Literal["user", "assistant", "system"]
+    role: Role
     content: str

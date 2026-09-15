@@ -2,11 +2,12 @@
 from pydantic import BaseModel, Field
 
 from app.core.schemas import SourceSchema
+from app.modules.chat.constants import DEFAULT_SESSION_ID
 
 
 class ChatRequestSchema(BaseModel):
     question: str
-    session_id: str = "default"
+    session_id: str = DEFAULT_SESSION_ID
 
 
 class ChatResponseSchema(BaseModel):

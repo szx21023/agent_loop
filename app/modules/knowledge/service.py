@@ -14,11 +14,14 @@ from app.modules.knowledge.repository import get_retriever
 DEFAULT_RAG_TOP_K = 8
 ROUTE_TOP_K = 3
 
+# 索引尚未載入時的工具錯誤訊息
+INDEX_NOT_LOADED = "index not loaded"
+
 
 def _search_rag(query: str, top_k: int = DEFAULT_RAG_TOP_K) -> ToolResultSchema:
     retriever = get_retriever()
     if retriever is None:
-        return ToolResultSchema(name=ToolName.SEARCH_RAG, is_ok=False, error="index not loaded")
+        return ToolResultSchema(name=ToolName.SEARCH_RAG, is_ok=False, error=INDEX_NOT_LOADED)
     routes = retriever.route(query, top_k=ROUTE_TOP_K)
     if not routes:
         return ToolResultSchema(name=ToolName.SEARCH_RAG, is_ok=True, data=[], sources=[])
@@ -34,7 +37,7 @@ def _search_rag(query: str, top_k: int = DEFAULT_RAG_TOP_K) -> ToolResultSchema:
 def _search_graph(query: str) -> ToolResultSchema:
     retriever = get_retriever()
     if retriever is None:
-        return ToolResultSchema(name=ToolName.SEARCH_GRAPH, is_ok=False, error="index not loaded")
+        return ToolResultSchema(name=ToolName.SEARCH_GRAPH, is_ok=False, error=INDEX_NOT_LOADED)
     routes = retriever.route(query, top_k=ROUTE_TOP_K)
     if not routes:
         return ToolResultSchema(name=ToolName.SEARCH_GRAPH, is_ok=True, data=[], sources=[])
