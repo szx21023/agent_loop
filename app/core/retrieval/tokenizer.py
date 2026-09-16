@@ -4,6 +4,7 @@ No external dependencies. Ported from notion-kb-agent. Splitting CJK into both
 single chars (unigram) and adjacent pairs (bigram) improves match precision for
 Chinese/Japanese/Korean text, which has no spaces between words.
 """
+
 import re
 
 _ASCII = re.compile(r"[a-z0-9]+")
@@ -18,5 +19,5 @@ def tokenize(text: str) -> list[str]:
     for run in _CJK_RUN.findall(text):
         tokens.extend(run)  # unigram
         for i in range(len(run) - 1):
-            tokens.append(run[i:i + 2])  # bigram
+            tokens.append(run[i : i + 2])  # bigram
     return tokens

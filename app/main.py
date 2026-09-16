@@ -1,4 +1,5 @@
 """FastAPI entrypoint — the Backend in agent_loop.png."""
+
 import logging
 
 from fastapi import FastAPI
@@ -24,9 +25,17 @@ app.include_router(chat_router, prefix="/api")
 # 兩個端點會對「online/offline」各說一套。
 @app.get("/")
 def root() -> dict:
-    return {"service": "agent-loop", "docs": "/docs", "mode": "online" if llm.is_online else "offline"}
+    return {
+        "service": "agent-loop",
+        "docs": "/docs",
+        "mode": "online" if llm.is_online else "offline",
+    }
 
 
 @app.get("/api/health")
 def health() -> dict:
-    return {"status": "ok", "mode": "online" if llm.is_online else "offline", "model": settings.model}
+    return {
+        "status": "ok",
+        "mode": "online" if llm.is_online else "offline",
+        "model": settings.model,
+    }

@@ -1,6 +1,7 @@
 """memory 模組對外服務：其他模組（如 chat）一律透過此層存取記憶，
 不直接碰 repository 的 store 實例。
 """
+
 from typing import Any
 
 from app.core.constants import Role

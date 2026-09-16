@@ -9,6 +9,7 @@ Retriever 對齊 notion_graph.png 第 3 節（Agent 查詢與搜尋流程）：
 索引由 settings.index_path 載入（lru_cache 單例）；索引不存在時回 None，讓上層工具回傳
 錯誤結果而非讓整個 agent loop 崩潰。
 """
+
 import json
 import logging
 from functools import lru_cache
@@ -24,8 +25,11 @@ log = logging.getLogger(__name__)
 class Retriever:
     def __init__(self, index: dict):
         self.nodes: dict[str, dict] = index["nodes"]
-        self.roots = [nid for nid, node in self.nodes.items()
-                      if node["type"] == "page" and not node.get("parent")]
+        self.roots = [
+            nid
+            for nid, node in self.nodes.items()
+            if node["type"] == "page" and not node.get("parent")
+        ]
 
         self._parent_bm25 = BM25()
         for rid in self.roots:
@@ -85,11 +89,16 @@ class Retriever:
         for cid, score in bm.search(tokenize(question), top_k):
             nid, ci = cmap[cid]
             node = self.nodes[nid]
-            results.append({
-                "node_id": nid, "title": node["title"], "type": node["type"],
-                "department": node.get("department"), "chunk": node["chunks"][ci],
-                "score": round(score, 3),
-            })
+            results.append(
+                {
+                    "node_id": nid,
+                    "title": node["title"],
+                    "type": node["type"],
+                    "department": node.get("department"),
+                    "chunk": node["chunks"][ci],
+                    "score": round(score, 3),
+                }
+            )
         return results
 
 
