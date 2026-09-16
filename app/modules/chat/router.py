@@ -1,4 +1,5 @@
 """chat 路由：Backend 層，只做參數驗證 → 呼叫 service → 回傳。"""
+
 from fastapi import APIRouter
 
 from app.modules.chat.schemas import ChatRequestSchema, ChatResponseSchema

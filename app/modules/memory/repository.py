@@ -3,6 +3,7 @@
 - ConversationStore：per-session 對話歷史。
 - ProfileStore：per-user 長期偏好/事實。
 """
+
 from collections import defaultdict
 from typing import Any
 

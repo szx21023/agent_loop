@@ -4,6 +4,7 @@
 轉成一致的 JSON 回應。注意：工具內部的失敗回 ToolResultSchema(is_ok=False)，不要在這裡
 拋例外，以免中斷 agent loop。
 """
+
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
