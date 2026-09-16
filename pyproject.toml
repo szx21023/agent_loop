@@ -12,6 +12,11 @@ target-version = "py311"
 select = ["E", "F", "I", "B", "UP", "ASYNC", "SIM", "C4", "N", "RUF"]
 ignore = [
     "B008",  # FastAPI 的 Depends() 放在預設參數是正常用法
+    # 本專案 docstring/註解刻意用中文，全形標點（，：；（）／…）是正常書寫，
+    # 非「混進程式碼的歧義字元」。RUF001/002/003 的前提是純 ASCII 原始碼，與此慣例衝突，故關閉。
+    "RUF001",  # 字串中的歧義 unicode
+    "RUF002",  # docstring 中的歧義 unicode
+    "RUF003",  # 註解中的歧義 unicode
 ]
 
 [tool.ruff.lint.isort]

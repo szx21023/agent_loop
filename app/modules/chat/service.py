@@ -8,9 +8,12 @@ Two implementations behind one entrypoint:
 
 Both cap iterations with settings.max_loop_steps and return a ChatResponseSchema.
 """
+
 from __future__ import annotations
+
 import json
 import logging
+from collections.abc import Iterator
 from typing import Any
 
 from app.config import settings
@@ -20,13 +23,16 @@ from app.core.llm.constants import NO_ANSWER
 from app.core.schemas import SourceSchema, ToolResultSchema
 from app.core.tools import REGISTRY, tool_definitions
 from app.modules.chat.constants import (
+    CONTENT_BLOCK_DELTA,
     DEFAULT_SESSION_ID,
     PARTIAL_ANSWER,
     TEXT,
+    TEXT_DELTA,
     TOOL_RESULT,
     TOOL_USE,
+    EventType,
 )
-from app.modules.chat.schemas import ChatResponseSchema
+from app.modules.chat.schemas import ChatEventSchema, ChatResponseSchema
 from app.modules.memory import service as memory
 
 log = logging.getLogger(__name__)
@@ -44,6 +50,25 @@ def run_agent(question: str, session_id: str = DEFAULT_SESSION_ID) -> ChatRespon
     if llm.is_online:
         return _run_online(question, session_id)
     return _run_offline(question, session_id)
+
+
+def stream_agent(question: str, session_id: str = DEFAULT_SESSION_ID) -> Iterator[ChatEventSchema]:
+    """Agent Loop 的串流版：逐步 yield 事件（step / tool / delta / done）。
+
+    與阻塞式的 run_agent 對照——呼叫端不必等整輪跑完，迴圈一有進展（進入下一步、
+    呼叫工具、生出一段文字）就立刻收到。online 走 Anthropic 真串流；offline 沒有
+    真 token 串流，改把彙整後的答案切片吐出（維持雙模式對稱，讓無金鑰也能端到端跑）。
+
+    Args:
+        question: 使用者問題。
+        session_id: 對話 session；用於讀寫對話歷史。
+    Yields:
+        ChatEventSchema，型別見 EventType。
+    """
+    if llm.is_online:
+        yield from _stream_online(question, session_id)
+    else:
+        yield from _stream_offline(question, session_id)
 
 
 # ── online: native Anthropic tool-use loop ──
@@ -72,12 +97,16 @@ def _run_online(question: str, session_id: str) -> ChatResponseSchema:
                 continue
             result = _run_tool(block.name, dict(block.input))
             sources.extend(result.sources)
-            tool_results.append({
-                "type": TOOL_RESULT,
-                "tool_use_id": block.id,
-                "content": _stringify(result.data if result.is_ok else f"error: {result.error}"),
-                "is_error": not result.is_ok,
-            })
+            tool_results.append(
+                {
+                    "type": TOOL_RESULT,
+                    "tool_use_id": block.id,
+                    "content": _stringify(
+                        result.data if result.is_ok else f"error: {result.error}"
+                    ),
+                    "is_error": not result.is_ok,
+                }
+            )
         messages.append({"role": Role.USER, "content": tool_results})
 
     # loop exhausted without a final answer
@@ -95,7 +124,8 @@ def _run_offline(question: str, session_id: str) -> ChatResponseSchema:
     evidence: list[str] = []
     steps = 0
 
-    for steps in range(1, settings.max_loop_steps + 1):
+    # steps 為迴圈實跑輪數，於迴圈結束後回傳；body 內不需再引用（對照 _run_online 在 body 內就回傳）
+    for steps in range(1, settings.max_loop_steps + 1):  # noqa: B007
         tool_call, _ = llm.offline_decide(question, used)
         if tool_call is None:
             break
@@ -108,6 +138,90 @@ def _run_offline(question: str, session_id: str) -> ChatResponseSchema:
     answer = llm.offline_answer(evidence)
     memory.append_message(session_id, Role.ASSISTANT, answer)
     return ChatResponseSchema(answer=answer, sources=_dedup(sources), steps=steps)
+
+
+# ── streaming variants (mirror the blocking loops above, but yield progress) ──
+def _stream_online(question: str, session_id: str) -> Iterator[ChatEventSchema]:
+    tools = tool_definitions()
+    messages: list[dict[str, Any]] = _history_blocks(session_id)
+    messages.append({"role": Role.USER, "content": question})
+    sources: list[SourceSchema] = []
+    answer_parts: list[str] = []
+    steps = 0
+
+    for steps in range(1, settings.max_loop_steps + 1):
+        yield ChatEventSchema(type=EventType.STEP, step=steps)
+        # 只保留當輪文字：最終答案僅取收尾那一輪，對齊 _run_online（避免把中間輪的
+        # 敘述一起串進答案，污染 memory 與 DONE.text）。逐 token 的畫面串流不受影響。
+        answer_parts.clear()
+        with llm.stream(messages, tools) as stream:
+            for event in stream:
+                if event.type == CONTENT_BLOCK_DELTA and event.delta.type == TEXT_DELTA:
+                    answer_parts.append(event.delta.text)
+                    yield ChatEventSchema(type=EventType.DELTA, text=event.delta.text)
+            final = stream.get_final_message()
+        messages.append({"role": Role.ASSISTANT, "content": final.content})
+
+        if final.stop_reason != TOOL_USE:
+            answer = "".join(answer_parts).strip() or NO_ANSWER
+            memory.append_message(session_id, Role.USER, question)
+            memory.append_message(session_id, Role.ASSISTANT, answer)
+            yield ChatEventSchema(
+                type=EventType.DONE, text=answer, sources=_dedup(sources), step=steps
+            )
+            return
+
+        tool_results = []
+        for block in final.content:
+            if block.type != TOOL_USE:
+                continue
+            yield ChatEventSchema(type=EventType.TOOL, tool=block.name)
+            result = _run_tool(block.name, dict(block.input))
+            sources.extend(result.sources)
+            tool_results.append(
+                {
+                    "type": TOOL_RESULT,
+                    "tool_use_id": block.id,
+                    "content": _stringify(
+                        result.data if result.is_ok else f"error: {result.error}"
+                    ),
+                    "is_error": not result.is_ok,
+                }
+            )
+        messages.append({"role": Role.USER, "content": tool_results})
+
+    # loop exhausted without a final answer
+    fallback = NO_ANSWER if not sources else PARTIAL_ANSWER
+    memory.append_message(session_id, Role.USER, question)
+    memory.append_message(session_id, Role.ASSISTANT, fallback)
+    yield ChatEventSchema(type=EventType.DONE, text=fallback, sources=_dedup(sources), step=steps)
+
+
+def _stream_offline(question: str, session_id: str) -> Iterator[ChatEventSchema]:
+    memory.append_message(session_id, Role.USER, question)
+    used: set[str] = set()
+    sources: list[SourceSchema] = []
+    evidence: list[str] = []
+    steps = 0
+
+    for steps in range(1, settings.max_loop_steps + 1):
+        yield ChatEventSchema(type=EventType.STEP, step=steps)
+        tool_call, _ = llm.offline_decide(question, used)
+        if tool_call is None:
+            break
+        yield ChatEventSchema(type=EventType.TOOL, tool=tool_call.name)
+        result = _run_tool(tool_call.name, tool_call.args)
+        used.add(tool_call.name)
+        sources.extend(result.sources)
+        if result.is_ok and result.data:
+            evidence.append(f"[{tool_call.name}] {_stringify(result.data)}")
+
+    answer = llm.offline_answer(evidence)
+    memory.append_message(session_id, Role.ASSISTANT, answer)
+    # 離線沒有真 token 串流：逐字吐出彙整後的答案，讓 CLI 呈現「打字」效果
+    for char in answer:
+        yield ChatEventSchema(type=EventType.DELTA, text=char)
+    yield ChatEventSchema(type=EventType.DONE, text=answer, sources=_dedup(sources), step=steps)
 
 
 def _run_tool(name: str, args: dict[str, Any]) -> ToolResultSchema:
