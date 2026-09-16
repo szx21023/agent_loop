@@ -5,6 +5,7 @@
 
 工具內部失敗一律回 ToolResultSchema(is_ok=False)，不拋例外，以免中斷 agent loop。
 """
+
 from app.core.schemas import SourceSchema, ToolResultSchema
 from app.core.tools.base import Tool, register
 from app.core.tools.constants import ToolName
@@ -31,7 +32,12 @@ def _search_rag(query: str, top_k: int = DEFAULT_RAG_TOP_K) -> ToolResultSchema:
         SourceSchema(tool=ToolName.SEARCH_RAG, ref=chunk["node_id"], snippet=chunk["chunk"])
         for chunk in chunks
     ]
-    return ToolResultSchema(name=ToolName.SEARCH_RAG, is_ok=True, data=[source.snippet for source in sources], sources=sources)
+    return ToolResultSchema(
+        name=ToolName.SEARCH_RAG,
+        is_ok=True,
+        data=[source.snippet for source in sources],
+        sources=sources,
+    )
 
 
 def _search_graph(query: str) -> ToolResultSchema:
@@ -43,52 +49,78 @@ def _search_graph(query: str) -> ToolResultSchema:
         return ToolResultSchema(name=ToolName.SEARCH_GRAPH, is_ok=True, data=[], sources=[])
     node_ids = retriever.gather([nid for nid, _ in routes])
     sources = [
-        SourceSchema(tool=ToolName.SEARCH_GRAPH, ref=nid, snippet=retriever.nodes[nid].get("summary", ""))
-        for nid in node_ids if nid in retriever.nodes
+        SourceSchema(
+            tool=ToolName.SEARCH_GRAPH,
+            ref=nid,
+            snippet=retriever.nodes[nid].get("summary", ""),
+        )
+        for nid in node_ids
+        if nid in retriever.nodes
     ]
-    return ToolResultSchema(name=ToolName.SEARCH_GRAPH, is_ok=True, data=[source.ref for source in sources], sources=sources)
+    return ToolResultSchema(
+        name=ToolName.SEARCH_GRAPH,
+        is_ok=True,
+        data=[source.ref for source in sources],
+        sources=sources,
+    )
 
 
 def _get_document(doc_id: str) -> ToolResultSchema:
     retriever = get_retriever()
     if retriever is not None and doc_id in retriever.nodes:
         node = retriever.nodes[doc_id]
-        return ToolResultSchema(name=ToolName.GET_DOCUMENT, is_ok=True, data=node.get("body") or node.get("summary", ""))
+        return ToolResultSchema(
+            name=ToolName.GET_DOCUMENT,
+            is_ok=True,
+            data=node.get("body") or node.get("summary", ""),
+        )
     return ToolResultSchema(name=ToolName.GET_DOCUMENT, is_ok=False, error=f"unknown doc: {doc_id}")
 
 
-register(Tool(
-    name=ToolName.SEARCH_RAG,
-    description="Vector/keyword search over documents (route -> traverse -> re-rank). Returns relevant chunks.",
-    parameters={
-        "type": "object",
-        "properties": {
-            "query": {"type": "string"},
-            "top_k": {"type": "integer", "default": DEFAULT_RAG_TOP_K},
+register(
+    Tool(
+        name=ToolName.SEARCH_RAG,
+        description=(
+            "Vector/keyword search over documents (route -> traverse -> re-rank). "
+            "Returns relevant chunks."
+        ),
+        parameters={
+            "type": "object",
+            "properties": {
+                "query": {"type": "string"},
+                "top_k": {"type": "integer", "default": DEFAULT_RAG_TOP_K},
+            },
+            "required": ["query"],
         },
-        "required": ["query"],
-    },
-    run=lambda query, top_k=DEFAULT_RAG_TOP_K: _search_rag(query, top_k),
-))
+        run=lambda query, top_k=DEFAULT_RAG_TOP_K: _search_rag(query, top_k),
+    )
+)
 
-register(Tool(
-    name=ToolName.SEARCH_GRAPH,
-    description="Graph search: route to relevant parent pages, then expand the subtree and related nodes.",
-    parameters={
-        "type": "object",
-        "properties": {"query": {"type": "string"}},
-        "required": ["query"],
-    },
-    run=lambda query: _search_graph(query),
-))
+register(
+    Tool(
+        name=ToolName.SEARCH_GRAPH,
+        description=(
+            "Graph search: route to relevant parent pages, "
+            "then expand the subtree and related nodes."
+        ),
+        parameters={
+            "type": "object",
+            "properties": {"query": {"type": "string"}},
+            "required": ["query"],
+        },
+        run=lambda query: _search_graph(query),
+    )
+)
 
-register(Tool(
-    name=ToolName.GET_DOCUMENT,
-    description="Fetch the full text of a document by its id.",
-    parameters={
-        "type": "object",
-        "properties": {"doc_id": {"type": "string"}},
-        "required": ["doc_id"],
-    },
-    run=lambda doc_id: _get_document(doc_id),
-))
+register(
+    Tool(
+        name=ToolName.GET_DOCUMENT,
+        description="Fetch the full text of a document by its id.",
+        parameters={
+            "type": "object",
+            "properties": {"doc_id": {"type": "string"}},
+            "required": ["doc_id"],
+        },
+        run=lambda doc_id: _get_document(doc_id),
+    )
+)

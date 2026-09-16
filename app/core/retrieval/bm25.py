@@ -1,4 +1,5 @@
 """極簡 BM25（純標準函式庫）。用於：父頁面路由檢索 + 子樹 chunk 重排序。"""
+
 import math
 from collections import Counter
 
@@ -19,7 +20,7 @@ class BM25:
         df: Counter = Counter()
         for _, c, _ in self._docs:
             df.update(c.keys())
-        self.avgdl = (sum(l for _, _, l in self._docs) / n) if n else 0.0
+        self.avgdl = (sum(length for _, _, length in self._docs) / n) if n else 0.0
         self.idf = {t: math.log(1 + (n - d + 0.5) / (d + 0.5)) for t, d in df.items()}
         self._is_final = True
         return self
@@ -35,7 +36,8 @@ class BM25:
                 if not f:
                     continue
                 idf = self.idf.get(t, 0.0)
-                s += idf * (f * (self.k1 + 1)) / (f + self.k1 * (1 - self.b + self.b * length / (self.avgdl or 1)))
+                denom = f + self.k1 * (1 - self.b + self.b * length / (self.avgdl or 1))
+                s += idf * (f * (self.k1 + 1)) / denom
             if s > 0:
                 out.append((doc_id, s))
         out.sort(key=lambda x: -x[1])

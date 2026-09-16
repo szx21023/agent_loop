@@ -1,5 +1,6 @@
 """跨功能共用的資料型別（core 層，不依賴任何 module）。"""
-from typing import Any, Optional
+
+from typing import Any
 
 from pydantic import BaseModel, Field
 
@@ -20,4 +21,4 @@ class ToolResultSchema(BaseModel):
     is_ok: bool
     data: Any = None
     sources: list[SourceSchema] = Field(default_factory=list)
-    error: Optional[str] = None
+    error: str | None = None

@@ -3,9 +3,12 @@
 A Tool exposes a name, a JSON-schema description (fed to the LLM as a tool
 definition), and a `run(**args)` that returns a ToolResultSchema.
 """
+
 from __future__ import annotations
+
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any, Callable
+from typing import Any
 
 from app.core.schemas import ToolResultSchema
 
