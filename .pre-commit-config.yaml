@@ -2,9 +2,9 @@
 # 安裝一次：pip install pre-commit && pre-commit install
 repos:
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.6.9
+    rev: v0.16.10
     hooks:
-      - id: ruff          # lint（自動修正可修的問題）
+      - id: ruff-check    # lint（自動修正可修的問題）
         args: [--fix]
       - id: ruff-format   # 格式化
 
