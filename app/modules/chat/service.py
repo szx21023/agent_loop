@@ -22,7 +22,7 @@ from app.core.constants import Role
 from app.core.llm import llm
 from app.core.llm.constants import NO_ANSWER
 from app.core.schemas import SourceSchema, ToolResultSchema
-from app.core.tools import REGISTRY, tool_definitions
+from app.core.tools import REGISTRY, Tool, tool_definitions
 from app.modules.chat.constants import (
     CONTENT_BLOCK_DELTA,
     DEFAULT_SESSION_ID,
@@ -139,7 +139,7 @@ def _stream_offline(question: str, session_id: str) -> Iterator[ChatEventSchema]
 
     for steps in range(1, settings.max_loop_steps + 1):
         yield ChatEventSchema(type=EventType.STEP, step=steps)
-        tool_call, _ = llm.offline_decide(question, used)
+        tool_call, _ = llm.offline_plan(question, used)
         if tool_call is None:
             break
         yield ChatEventSchema(type=EventType.TOOL, tool=tool_call.name)
@@ -166,10 +166,32 @@ def _done(session_id: str, answer: str, sources: list[SourceSchema], step: int) 
     return ChatEventSchema(type=EventType.DONE, text=answer, sources=_dedup(sources), step=step)
 
 
+def _validate_tool_args(tool: Tool, args: dict[str, Any]) -> str | None:
+    """依工具宣告的 JSON schema 粗驗參數；有問題回錯誤訊息，否則回 None。
+
+    不引入完整 JSON Schema 驗證相依，只擋最常見的模型失誤（缺必要鍵、給了未宣告的
+    鍵），讓迴圈收到清楚的錯誤訊息，而非 `tool.run(**args)` 展開時一個難解讀的
+    TypeError（雖然後者也會被接住，但訊息對模型重試沒幫助）。
+    """
+    schema = tool.parameters
+    properties = schema.get("properties", {})
+    required = schema.get("required", [])
+    missing = [key for key in required if key not in args]
+    if missing:
+        return f"missing required arg(s): {', '.join(missing)}"
+    unexpected = [key for key in args if key not in properties]
+    if unexpected:
+        return f"unexpected arg(s): {', '.join(unexpected)}"
+    return None
+
+
 def _run_tool(name: str, args: dict[str, Any]) -> ToolResultSchema:
     tool = REGISTRY.get(name)
     if tool is None:
         return ToolResultSchema(name=name, is_ok=False, error=f"unknown tool: {name}")
+    arg_error = _validate_tool_args(tool, args)
+    if arg_error is not None:
+        return ToolResultSchema(name=name, is_ok=False, error=arg_error)
     try:
         return tool.run(**args)
     except Exception as exc:

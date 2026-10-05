@@ -15,9 +15,12 @@ import logging
 from functools import lru_cache
 from pathlib import Path
 
+from pydantic import ValidationError
+
 from app.config import settings
 from app.core.retrieval.bm25 import BM25
 from app.core.retrieval.tokenizer import tokenize
+from app.modules.knowledge.schemas import IndexSchema
 
 log = logging.getLogger(__name__)
 
@@ -104,10 +107,19 @@ class Retriever:
 
 @lru_cache(maxsize=1)
 def get_retriever() -> Retriever | None:
-    """載入預建索引並回傳 Retriever（單例）；索引不存在時回 None。"""
+    """載入預建索引並回傳 Retriever（單例）；索引不存在或格式不符時回 None。
+
+    載入時以 IndexSchema 驗證：缺必要欄位／JSON 壞掉就記錄並回 None，讓上層工具回
+    乾淨的錯誤結果，而不是等到檢索途中才以 KeyError 中斷。
+    """
     path = Path(settings.index_path)
     if not path.exists():
         log.warning("index not found at %s — knowledge tools will return empty", path)
         return None
-    index = json.loads(path.read_text(encoding="utf-8"))
-    return Retriever(index)
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+        index = IndexSchema.model_validate(raw)
+    except (json.JSONDecodeError, ValidationError):
+        log.exception("index at %s is malformed — knowledge tools will return empty", path)
+        return None
+    return Retriever(index.model_dump())

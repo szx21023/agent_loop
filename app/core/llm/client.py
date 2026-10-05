@@ -2,7 +2,7 @@
 
 Online: exposes `create()`, a thin pass-through to the Anthropic Messages API
 used by the agent loop's native tool-use path (app/modules/chat/service.py).
-Offline (no API key): `offline_decide()` / `offline_answer()` drive a
+Offline (no API key): `offline_plan()` / `offline_answer()` drive a
 deterministic heuristic loop so the whole app runs end-to-end without network.
 """
 
@@ -64,9 +64,11 @@ class LLM:
         )
 
     # ── offline heuristic (no API key): graph → rag → answer ──
-    def offline_decide(
+    def offline_plan(
         self, question: str, used_tools: set[str]
     ) -> tuple[ToolCallSchema | None, str | None]:
+        """固定腳本（非真正決策）：依序 graph → rag，兩者都跑過就回 (None, None)
+        示意呼叫端改用證據合成答案。保留 tuple 回傳形狀以對齊呼叫端解構。"""
         if ToolName.SEARCH_GRAPH not in used_tools:
             return ToolCallSchema(name=ToolName.SEARCH_GRAPH, args={"query": question}), None
         if ToolName.SEARCH_RAG not in used_tools:
