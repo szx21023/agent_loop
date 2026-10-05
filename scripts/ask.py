@@ -8,6 +8,7 @@
   - 串流：迴圈一有進展就即時輸出（進入下一步、呼叫工具、逐字冒出答案）。
 """
 
+import asyncio
 import sys
 import time
 
@@ -33,23 +34,23 @@ def _print_sources(sources: list[SourceSchema]) -> None:
         print(f"  - [{source.tool}] {source.ref}: {source.snippet[:60]}")
 
 
-def _ask_blocking(question: str) -> None:
+async def _ask_blocking(question: str) -> None:
     print(f"\n[阻塞模式] Q: {question}\n")
     print("（等待整個 agent loop 跑完，過程中畫面不會有任何輸出…）")
     start = time.perf_counter()
-    resp = run_agent(question)
+    resp = await run_agent(question)
     elapsed = time.perf_counter() - start
     print(f"\nA: {resp.answer}\n")
     print(f"(steps: {resp.steps}，等了 {elapsed:.1f}s 才一次看到整段答案)")
     _print_sources(resp.sources)
 
 
-def _ask_streaming(question: str) -> None:
+async def _ask_streaming(question: str) -> None:
     print(f"\n[串流模式] Q: {question}\n")
     typewriter = not llm.is_online  # 線上靠真 delta 的節奏；離線才需人工延遲
     sources: list[SourceSchema] = []
     steps = 0
-    for event in stream_agent(question):
+    async for event in stream_agent(question):
         _render_event(event, typewriter)
         if event.type == EventType.DONE:
             sources = event.sources
@@ -74,9 +75,9 @@ def main() -> None:
     use_stream = "--stream" in raw
     question = " ".join(arg for arg in raw if arg != "--stream") or DEFAULT_QUESTION
     if use_stream:
-        _ask_streaming(question)
+        asyncio.run(_ask_streaming(question))
     else:
-        _ask_blocking(question)
+        asyncio.run(_ask_blocking(question))
 
 
 if __name__ == "__main__":

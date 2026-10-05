@@ -5,16 +5,19 @@
              looping until the model stops requesting tools。
   - offline: deterministic heuristic (graph → rag → answer)，讓 app 無金鑰也能跑。
 
+全程 async：online 的網路 I/O 以 AsyncAnthropic 串流進行，整條 agent loop 皆為 async
+（CLAUDE.md：所有 I/O 一律 async，不在 async 路徑裡做同步阻塞呼叫）。
+
 阻塞式的 run_agent 不再自成一套迴圈，而是「消費 stream_agent 的事件、摺疊成一次性
-結果」——確保阻塞與串流兩種呼叫方式行為必然一致（過去各寫一份迴圈，收尾／memory
-邏輯容易改漏）。兩種模式都以 settings.max_loop_steps 設迴圈上限。
+結果」——確保阻塞與串流兩種呼叫方式行為必然一致。兩種模式都以 settings.max_loop_steps
+設迴圈上限。
 """
 
 from __future__ import annotations
 
 import json
 import logging
-from collections.abc import Iterator
+from collections.abc import AsyncIterator
 from typing import Any
 
 from app.config import settings
@@ -38,11 +41,11 @@ from app.modules.memory import service as memory
 log = logging.getLogger(__name__)
 
 
-def run_agent(question: str, session_id: str = DEFAULT_SESSION_ID) -> ChatResponseSchema:
-    """Agent Loop 的阻塞式進入點：消費串流事件並摺疊成一次性結果。
+async def run_agent(question: str, session_id: str = DEFAULT_SESSION_ID) -> ChatResponseSchema:
+    """Agent Loop 的一次性（非串流）進入點：消費串流事件並摺疊成結果。
 
     流程本身只存在於 stream_agent（online/offline）；此處只取收尾的 DONE 事件
-    （已含答案、去重來源、步數），因此阻塞與串流結果保證一致。
+    （已含答案、去重來源、步數），因此一次性與串流結果保證一致。
 
     Args:
         question: 使用者問題。
@@ -51,13 +54,15 @@ def run_agent(question: str, session_id: str = DEFAULT_SESSION_ID) -> ChatRespon
         ChatResponseSchema（答案、去重後的來源、迴圈步數）。
     """
     answer, sources, steps = NO_ANSWER, [], 0
-    for event in stream_agent(question, session_id):
+    async for event in stream_agent(question, session_id):
         if event.type == EventType.DONE:
             answer, sources, steps = event.text, event.sources, event.step
     return ChatResponseSchema(answer=answer, sources=sources, steps=steps)
 
 
-def stream_agent(question: str, session_id: str = DEFAULT_SESSION_ID) -> Iterator[ChatEventSchema]:
+async def stream_agent(
+    question: str, session_id: str = DEFAULT_SESSION_ID
+) -> AsyncIterator[ChatEventSchema]:
     """Agent Loop：逐步 yield 事件（step / tool / delta / done）。
 
     迴圈一有進展（進入下一步、呼叫工具、生出一段文字）就立刻 yield，呼叫端不必等
@@ -71,13 +76,15 @@ def stream_agent(question: str, session_id: str = DEFAULT_SESSION_ID) -> Iterato
         ChatEventSchema，型別見 EventType。
     """
     if llm.is_online:
-        yield from _stream_online(question, session_id)
+        async for event in _stream_online(question, session_id):
+            yield event
     else:
-        yield from _stream_offline(question, session_id)
+        async for event in _stream_offline(question, session_id):
+            yield event
 
 
 # ── online: native Anthropic tool-use loop ──
-def _stream_online(question: str, session_id: str) -> Iterator[ChatEventSchema]:
+async def _stream_online(question: str, session_id: str) -> AsyncIterator[ChatEventSchema]:
     tools = tool_definitions()
     messages: list[dict[str, Any]] = _history_blocks(session_id)
     messages.append({"role": Role.USER, "content": question})
@@ -90,12 +97,12 @@ def _stream_online(question: str, session_id: str) -> Iterator[ChatEventSchema]:
         # 只保留當輪文字：最終答案僅取收尾那一輪，避免把中間輪的敘述一起串進答案、
         # 污染 memory 與 DONE.text。逐 token 的畫面串流不受影響。
         answer_parts.clear()
-        with llm.stream(messages, tools) as stream:
-            for event in stream:
+        async with llm.stream(messages, tools) as stream:
+            async for event in stream:
                 if event.type == CONTENT_BLOCK_DELTA and event.delta.type == TEXT_DELTA:
                     answer_parts.append(event.delta.text)
                     yield ChatEventSchema(type=EventType.DELTA, text=event.delta.text)
-            final = stream.get_final_message()
+            final = await stream.get_final_message()
         messages.append({"role": Role.ASSISTANT, "content": final.content})
 
         if final.stop_reason != TOOL_USE:
@@ -130,7 +137,7 @@ def _stream_online(question: str, session_id: str) -> Iterator[ChatEventSchema]:
 
 
 # ── offline: heuristic graph → rag → answer ──
-def _stream_offline(question: str, session_id: str) -> Iterator[ChatEventSchema]:
+async def _stream_offline(question: str, session_id: str) -> AsyncIterator[ChatEventSchema]:
     memory.append_message(session_id, Role.USER, question)
     used: set[str] = set()
     sources: list[SourceSchema] = []

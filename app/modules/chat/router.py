@@ -10,8 +10,8 @@ router = APIRouter(tags=["chat"])
 
 
 @router.post("/ask", response_model=ChatResponseSchema)
-def ask(req: ChatRequestSchema) -> ChatResponseSchema:
-    return run_agent(req.question, req.session_id)
+async def ask(req: ChatRequestSchema) -> ChatResponseSchema:
+    return await run_agent(req.question, req.session_id)
 
 
 @router.delete("/sessions/{session_id}")
